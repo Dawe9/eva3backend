@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="es">
 <head>
-    <!-- Plantilla comun: todas las paginas heredan esta estructura. -->
+    <!-- Plantilla base compartida por las paginas del sitio. -->
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Abastecimiento B2B{% endblock %}</title>
@@ -25,6 +25,8 @@
         .brand-caption { display: block; margin-top: .2rem; color: var(--muted); font-size: .59rem; letter-spacing: .08em; }
         .site-nav .nav-link { color: #42534b; font-size: .87rem; padding: .6rem .8rem; }
         .site-nav .nav-link:hover, .site-nav .nav-link.active { color: var(--pine); }
+        .nav-link-cart { display: inline-flex; align-items: center; gap: .5rem; }
+        .nav-link-cart svg { width: 1rem; height: 1rem; stroke: currentColor; }
         .nav-utility { display: flex; align-items: center; gap: .35rem; }
         .nav-utility .btn { border-radius: 2px; font-size: .82rem; }
         .nav-toggle { border: 1px solid var(--line); background: #fff; color: var(--pine); padding: .4rem .65rem; }
@@ -58,7 +60,15 @@
                 <div class="navbar-nav mx-auto">
                     <a class="nav-link" href="/">Inicio</a>
                     <a class="nav-link" href="/products/">Catálogo</a>
-                    <a class="nav-link" href="/cart/">Solicitud <span class="badge text-bg-success" id="cart-count">0</span></a>
+                    <a class="nav-link nav-link-cart" href="/cart/">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="9" cy="19" r="1.5"></circle>
+                            <circle cx="17" cy="19" r="1.5"></circle>
+                            <path d="M3 4h2l2.4 9.2a1 1 0 0 0 1 .8h8.9a1 1 0 0 0 1-.8L19 7H7"></path>
+                        </svg>
+                        <span>Carrito</span>
+                        <span class="badge text-bg-success" id="cart-count">0</span>
+                    </a>
                 </div>
                 <div class="nav-utility">
                     <a class="btn btn-outline-success d-none" href="/gestor/" id="warehouse-link">Panel de administración</a>

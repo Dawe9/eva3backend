@@ -53,6 +53,8 @@
         </div>
         <div class="warehouse-actions">
             <button class="btn btn-success" type="button" id="open-docs">Documentación API</button>
+            <button class="btn btn-outline-success" type="button" data-tab-trigger="inventory">Administrar stock</button>
+            <button class="btn btn-outline-secondary" type="button" data-tab-trigger="requests">Solicitudes</button>
             <a class="btn btn-outline-success" href="/admin/">Administración completa</a>
         </div>
     </header>
@@ -120,6 +122,7 @@ const money = value => `$${Number(value).toLocaleString('es-CL')}`;
 let supplies = [];
 let requests = [];
 let categories = [];
+let editOnlyMode = false;
 
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, character => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
@@ -178,7 +181,7 @@ function renderSupplies() {
             <td>${money(supply.unit_price)}</td>
             <td><span class="stock-chip">${supply.stock} cajas</span></td>
             <td>${supply.is_active ? 'Activo' : 'Oculto'}</td>
-            <td><div class="row-actions"><button class="btn btn-outline-success" data-edit-supply="${supply.id}">Editar</button><button class="btn btn-outline-secondary" data-toggle-supply="${supply.id}" data-active="${supply.is_active}">${supply.is_active ? 'Ocultar' : 'Publicar'}</button></div></td>
+            <td><div class="row-actions"><button class="btn btn-outline-success" data-edit-supply="${supply.id}">Editar pedido</button><button class="btn btn-outline-secondary" data-toggle-supply="${supply.id}" data-active="${supply.is_active}">${supply.is_active ? 'Ocultar' : 'Publicar'}</button></div></td>
         </tr>`).join('');
 }
 
@@ -221,11 +224,25 @@ async function loadDashboard() {
 }
 
 function clearSupplyForm() {
+    editOnlyMode = false;
     document.querySelector('#supply-form').reset();
     document.querySelector('#supply-id').value = '';
     document.querySelector('#supply-form-title').textContent = 'Registrar insumo';
     document.querySelector('#supply-submit').textContent = 'Guardar insumo';
     document.querySelector('#cancel-edit').classList.add('d-none');
+    const restrictedFields = ['#supply-category', '#supply-name', '#supply-ingredient', '#supply-lot', '#supply-image'];
+    restrictedFields.forEach(selector => {
+        const field = document.querySelector(selector);
+        if (field) field.disabled = false;
+    });
+}
+
+function applyEditMode() {
+    const restrictedFields = ['#supply-category', '#supply-name', '#supply-ingredient', '#supply-lot', '#supply-image'];
+    restrictedFields.forEach(selector => {
+        const field = document.querySelector(selector);
+        if (field) field.disabled = editOnlyMode;
+    });
 }
 
 document.querySelectorAll('[data-tab]').forEach(button => {
@@ -233,6 +250,15 @@ document.querySelectorAll('[data-tab]').forEach(button => {
         document.querySelectorAll('[data-tab]').forEach(tab => tab.setAttribute('aria-selected', String(tab === button)));
         document.querySelector('#inventory-panel').hidden = button.dataset.tab !== 'inventory';
         document.querySelector('#requests-panel').hidden = button.dataset.tab !== 'requests';
+    });
+});
+
+document.querySelectorAll('[data-tab-trigger]').forEach(button => {
+    button.addEventListener('click', () => {
+        const target = document.querySelector(`[data-tab="${button.dataset.tabTrigger}"]`);
+        if (!target) return;
+        target.click();
+        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
 });
 
@@ -253,17 +279,25 @@ document.querySelector('#category-form').addEventListener('submit', async event 
 document.querySelector('#supply-form').addEventListener('submit', async event => {
     event.preventDefault();
     const supplyId = document.querySelector('#supply-id').value;
-    const payload = {
-        category: Number(document.querySelector('#supply-category').value),
-        commercial_name: document.querySelector('#supply-name').value,
-        active_ingredient: document.querySelector('#supply-ingredient').value,
-        lot: document.querySelector('#supply-lot').value,
-        expiration_date: document.querySelector('#supply-expiration').value,
-        unit_price: document.querySelector('#supply-price').value,
-        stock: Number(document.querySelector('#supply-stock').value),
-        image_url: document.querySelector('#supply-image').value,
-        is_active: true
-    };
+    const payload = editOnlyMode
+        ? {
+            expiration_date: document.querySelector('#supply-expiration').value,
+            unit_price: document.querySelector('#supply-price').value,
+            stock: Number(document.querySelector('#supply-stock').value),
+            image_url: document.querySelector('#supply-image').value,
+            is_active: true,
+        }
+        : {
+            category: Number(document.querySelector('#supply-category').value),
+            commercial_name: document.querySelector('#supply-name').value,
+            active_ingredient: document.querySelector('#supply-ingredient').value,
+            lot: document.querySelector('#supply-lot').value,
+            expiration_date: document.querySelector('#supply-expiration').value,
+            unit_price: document.querySelector('#supply-price').value,
+            stock: Number(document.querySelector('#supply-stock').value),
+            image_url: document.querySelector('#supply-image').value,
+            is_active: true
+        };
     try {
         await apiRequest(supplyId ? `/api/insumos/${supplyId}/` : '/api/insumos/', {
             method: supplyId ? 'PATCH' : 'POST', body: JSON.stringify(payload)
@@ -271,7 +305,7 @@ document.querySelector('#supply-form').addEventListener('submit', async event =>
         clearSupplyForm();
         supplies = await apiRequest('/api/insumos/');
         renderSupplies();
-        showMessage('inventory-message', supplyId ? 'Insumo actualizado.' : 'Insumo creado.');
+        showMessage('inventory-message', supplyId ? (editOnlyMode ? 'Pedido actualizado.' : 'Insumo actualizado.') : 'Insumo creado.');
     } catch (error) { showMessage('inventory-message', error.message, true); }
 });
 
@@ -282,6 +316,7 @@ document.querySelector('#supplies-body').addEventListener('click', async event =
     if (editButton) {
         const supply = supplies.find(item => item.id === Number(editButton.dataset.editSupply));
         if (!supply) return;
+        editOnlyMode = true;
         document.querySelector('#supply-id').value = supply.id;
         document.querySelector('#supply-category').value = supply.category;
         document.querySelector('#supply-name').value = supply.commercial_name;
@@ -291,9 +326,10 @@ document.querySelector('#supplies-body').addEventListener('click', async event =
         document.querySelector('#supply-price').value = supply.unit_price;
         document.querySelector('#supply-stock').value = supply.stock;
         document.querySelector('#supply-image').value = supply.image_url;
-        document.querySelector('#supply-form-title').textContent = 'Editar insumo';
-        document.querySelector('#supply-submit').textContent = 'Guardar cambios';
+        document.querySelector('#supply-form-title').textContent = 'Editar pedido';
+        document.querySelector('#supply-submit').textContent = 'Guardar pedido';
         document.querySelector('#cancel-edit').classList.remove('d-none');
+        applyEditMode();
         document.querySelector('#supply-form').scrollIntoView({behavior: 'smooth', block: 'center'});
     }
     if (toggleButton) {

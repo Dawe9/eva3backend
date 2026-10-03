@@ -1,4 +1,4 @@
-"""Valores configurables que se muestran en el pie de página de evaluación."""
+"""Valores configurables que se muestran en el pie de página del sitio."""
 
 from django.conf import settings
 

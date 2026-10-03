@@ -1,50 +1,62 @@
 {% extends 'academic/base.html' %}
 {% block title %}Solicitud de Abastecimiento | Farmacia B2B{% endblock %}
 {% block content %}
-<section class="hero py-5 mb-4">
+<section class="py-4 py-lg-5">
 <style>
-    .request-wrap { max-width: 1180px; }
-    .request-heading { padding: 2rem 0 1.5rem; border-bottom: 1px solid var(--line); margin-bottom: 1.5rem; }
-    .request-heading .eyebrow { color: var(--leaf); font-size: .7rem; font-weight: 700; letter-spacing: .12em; }
-    .request-heading h1 { margin: .4rem 0; font-size: 2.25rem; }
-    .request-panel { background: #fff; border: 1px solid var(--line); padding: 1.25rem; }
-    .request-summary { position: sticky; top: 1rem; }
-    @media (max-width: 767.98px) { .request-heading h1 { font-size: 1.85rem; } .request-panel { padding: 1rem; } .request-summary { position: static; } }
+    .cart-shell { max-width: 1280px; margin: 0 auto; }
+    .cart-page-title { font-size: clamp(2rem, 2.3vw, 3rem); font-weight: 800; margin: 0; }
+    .cart-page-header { display: flex; align-items: center; gap: .75rem; }
+    .cart-page-icon { width: 2.2rem; height: 2.2rem; display: inline-flex; align-items: center; justify-content: center; background: #edf6ee; color: var(--pine); border-radius: 12px; }
+    .cart-page-icon svg { width: 1.2rem; height: 1.2rem; stroke: currentColor; fill: none; stroke-width: 1.8; }
+    .cart-layout { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(300px, .9fr); gap: 2rem; align-items: start; }
+    .cart-list { background: #fff; border: 1px solid #e7e9e4; border-radius: 0; padding: 0; overflow: hidden; }
+    .cart-item { display: grid; grid-template-columns: 86px minmax(0, 1fr) auto auto; gap: 1rem; align-items: center; padding: 1.25rem 1.4rem; border-bottom: 1px solid #edf0eb; }
+    .cart-item:last-child { border-bottom: none; }
+    .cart-product-thumb { width: 76px; height: 76px; border-radius: 10px; background: linear-gradient(135deg, #f2f4ef, #dfe7df); display: flex; align-items: center; justify-content: center; font-weight: 800; color: #0f5132; font-size: .72rem; text-transform: uppercase; overflow: hidden; }
+    .cart-product-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .cart-item-meta { min-width: 0; }
+    .cart-item-brand { color: #2d5b4c; font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; }
+    .cart-item-name { margin: .25rem 0 .2rem; font-size: 1.05rem; font-weight: 700; }
+    .cart-item-details { color: #5a645f; font-size: .82rem; }
+    .cart-item-controls { display: flex; align-items: center; gap: .6rem; }
+    .cart-item-qty { width: 86px; }
+    .cart-item-price { min-width: 120px; text-align: right; font-size: 1.05rem; font-weight: 700; color: #0f172a; }
+    .cart-item-actions { display: flex; align-items: center; gap: .5rem; }
+    .cart-summary { background: #fff; border: 1px solid #e7e9e4; padding: 1.6rem 1.4rem; }
+    .summary-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; font-size: .96rem; }
+    .summary-row strong { font-size: 1.05rem; }
+    .summary-total { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #dfe7df; padding-top: 1.1rem; margin-top: 1rem; font-weight: 800; font-size: 1.6rem; }
+    .btn-primary-buy { background: linear-gradient(90deg, #f3c15d, #f59b26); border: none; color: #0f172a; font-weight: 800; letter-spacing: .04em; padding: .9rem 1rem; width: 100%; border-radius: 0.8rem; margin-top: 1.2rem; }
+    .promo-inline { display: flex; gap: .6rem; margin: 1rem 0 1.3rem; }
+    .promo-inline input { flex: 1; }
+    .promo-inline button { min-width: 120px; }
+    .summary-label { color: #44514c; }
+    @media (max-width: 991.98px) { .cart-layout { grid-template-columns: 1fr; } }
+    @media (max-width: 575.98px) { .cart-item { grid-template-columns: 70px minmax(0, 1fr); } .cart-item-price, .cart-item-controls, .cart-item-actions { grid-column: 2; justify-self: start; } .cart-item-actions { margin-top: .25rem; } }
 </style>
-<div class="container request-wrap">
-    <div class="catalog-crumb pt-4">Inicio <span class="mx-2">/</span> Solicitud</div>
-    <header class="request-heading">
-        <span class="eyebrow">INSTITUCIONES MÉDICAS</span>
-        <h1>Solicitud de abastecimiento</h1>
-        <p class="text-secondary mb-0">Revisa las cajas requeridas antes de confirmar.</p>
-    </header>
-    <div class="row g-3 pb-5">
-        <div class="col-lg-7"><div id="cart-items" class="request-panel"></div></div>
-        <div class="col-lg-5">
-            <form id="checkout-form" class="request-panel request-summary">
-                <h2 class="h4">Resumen</h2>
-                <p class="text-secondary small">La solicitud queda registrada y el stock se descuenta al confirmar la compra.</p>
-                <hr>
-                <div class="d-flex justify-content-between fs-5 mb-3"><span>Total</span><strong id="cart-total">$0</strong></div>
-                <button class="btn btn-success w-100" type="submit">Confirmar solicitud</button>
-                <div id="checkout-status" class="mt-3" role="status"></div>
-            </form>
+<div class="container cart-shell">
+    <div class="catalog-crumb pt-4">Inicio <span class="mx-2">/</span> Carrito</div>
+    <div class="d-flex justify-content-between align-items-center my-4">
+        <div class="cart-page-header">
+            <span class="cart-page-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="9" cy="19" r="1.5"></circle>
+                    <circle cx="17" cy="19" r="1.5"></circle>
+                    <path d="M3 4h2l2.4 9.2a1 1 0 0 0 1 .8h8.9a1 1 0 0 0 1-.8L19 7H7"></path>
+                </svg>
+            </span>
+            <h1 class="cart-page-title">Carro de compras <span id="cart-count-inline" class="text-secondary">(0 productos)</span></h1>
         </div>
     </div>
-</div>
-<div class="container pb-5">
-    <div class="row g-4">
-        <div class="col-lg-7"><div id="cart-items" class="bg-white rounded shadow-sm p-4"></div></div>
-        <div class="col-lg-5">
-            <form id="checkout-form" class="bg-white rounded shadow-sm p-4">
-                <h2 class="h4">Confirmar solicitud</h2>
-                <p class="text-secondary">La solicitud queda registrada y el stock se descuenta al confirmar la compra.</p>
-                <hr>
-                <div class="d-flex justify-content-between fs-5 mb-3"><span>Total</span><strong id="cart-total">$0</strong></div>
-                <button class="btn btn-success w-100" type="submit">Confirmar compra</button>
-                <div id="checkout-status" class="mt-3" role="status"></div>
-            </form>
-        </div>
+    <div class="cart-layout pb-5">
+        <div id="cart-items" class="cart-list"></div>
+        <aside class="cart-summary">
+            <h2 class="h4 mb-3">Resumen de compra</h2>
+            <div class="summary-row"><span class="summary-label">Subtotal</span><strong id="subtotal-price">$0</strong></div>
+            <div class="summary-row"><span class="summary-label">Despacho</span><strong>$0</strong></div>
+            <div class="summary-total"><span>TOTAL</span><span id="cart-total">$0</span></div>
+            <button type="button" class="btn btn-primary-buy" id="checkout-button">IR A PAGAR</button>
+        </aside>
     </div>
 </div>
 <script>
@@ -66,26 +78,49 @@ async function syncCartWithServer() {
 }
 
 function renderCart() {
-    const target = document.querySelector('#cart-items');
     const total = cart.reduce((sum, item) => sum + Number(item.unit_price) * item.quantity, 0);
     document.querySelector('#cart-total').textContent = money(total);
-    document.querySelector('#cart-count').textContent = cart.reduce((sum, item) => sum + item.quantity, 0);
+    document.querySelector('#subtotal-price').textContent = money(total);
+    document.querySelector('#cart-count-inline').textContent = `(${cart.length} ${cart.length === 1 ? 'producto' : 'productos'})`;
+    const cartCount = document.querySelector('#cart-count');
+    if (cartCount) cartCount.textContent = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+    const target = document.querySelector('#cart-items');
+    if (!target) return;
+
     target.innerHTML = cart.length ? cart.map((item, index) => `
-        <div class="d-flex justify-content-between align-items-center border-bottom py-3">
-            <div><h3 class="h6 mb-1">${item.supply_name}</h3><small class="text-secondary">Lote ${item.lot} | ${money(item.unit_price)} por caja</small></div>
-            <div class="d-flex align-items-center gap-2"><input class="form-control" aria-label="Cantidad de cajas" style="width: 82px" type="number" min="1" value="${item.quantity}" onchange="changeQuantity(${index}, this.value)"><button class="btn btn-sm btn-outline-danger" onclick="removeItem(${index})">Quitar</button></div>
-        </div>`).join('') : '<p class="text-secondary mb-0">Tu carrito esta vacio. <a href="/products/">Explora el catalogo.</a></p>';
-    document.querySelector('#checkout-form button').disabled = !cart.length;
+        <div class="cart-item">
+            <div class="cart-product-thumb">
+                ${item.image_url ? `<img src="${item.image_url}" alt="${item.supply_name}">` : '<span>+</span>'}
+            </div>
+            <div class="cart-item-meta">
+                <div class="cart-item-brand">${item.category_name || 'GENERICO'}</div>
+                <div class="cart-item-name">${item.supply_name}</div>
+                <div class="cart-item-details">${item.quantity} ${item.quantity === 1 ? 'caja' : 'cajas'} · Lote ${item.lot} · SKU ${item.supply}</div>
+            </div>
+            <div class="cart-item-controls">
+                <input class="form-control cart-item-qty" aria-label="Cantidad de cajas" type="number" min="1" value="${item.quantity}" onchange="changeQuantity(${index}, this.value)">
+            </div>
+            <div class="cart-item-actions">
+                <div class="cart-item-price">${money(Number(item.unit_price) * item.quantity)}</div>
+                <button class="btn btn-link text-danger p-0 ms-2" onclick="removeItem(${index})">Eliminar</button>
+            </div>
+        </div>
+    `).join('') : '<div class="p-4 text-secondary">Tu carrito está vacío. <a href="/products/">Explora el catálogo.</a></div>';
+
+    const button = document.querySelector('#checkout-button');
+    if (button) button.disabled = !cart.length;
 }
 
 async function changeQuantity(index, quantity) {
     const token = localStorage.getItem('nexo-access-token');
     const item = cart[index];
     if (!token || !item) return;
+    const nextQty = Math.max(1, Number(quantity) || 1);
     const response = await fetch('/api/carro-insumos/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ supply_id: item.supply, quantity: Math.max(1, Number(quantity)) })
+        body: JSON.stringify({ supply_id: item.supply, quantity: nextQty, increment: false })
     });
     if (response.ok) {
         cart = (await response.json()).items;
@@ -109,29 +144,28 @@ async function removeItem(index) {
     }
 }
 
-document.querySelector('#checkout-form').addEventListener('submit', async event => {
-    event.preventDefault();
-    const status = document.querySelector('#checkout-status');
+document.querySelector('#checkout-button')?.addEventListener('click', async () => {
     const token = localStorage.getItem('nexo-access-token');
     if (!token) {
-        status.className = 'text-danger';
-        status.textContent = 'Debes iniciar sesion para confirmar la compra.';
-        window.location.href = '/login/';
+        window.location.href = '/login/?next=/cart/';
         return;
     }
     const response = await fetch('/api/solicitudes/confirmar/', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
     });
-    if (!response.ok) { status.className = 'text-danger'; status.textContent = 'No se pudo confirmar la solicitud. Verifica tu institución y el contenido del carro.'; return; }
+    if (!response.ok) {
+        alert('No se pudo confirmar la solicitud. Verifica el stock y tu perfil institucional.');
+        return;
+    }
     const order = await response.json();
     cart = [];
     localStorage.setItem('nexo-cart', JSON.stringify(cart));
     renderCart();
-    status.className = 'text-success';
-    status.textContent = `Solicitud #${order.id} creada con estado ${order.status}.`;
+    alert(`Solicitud #${order.id} creada y confirmada correctamente.`);
 });
 
 syncCartWithServer().finally(() => renderCart());
 </script>
+</section>
 {% endblock %}

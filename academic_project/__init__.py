@@ -1,1 +1,1 @@
-"""Paquete principal del proyecto académico."""
+"""Configuración del proyecto de abastecimiento B2B."""

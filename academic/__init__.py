@@ -1,1 +1,1 @@
-"""Módulo principal de la aplicación académica."""
+"""Aplicación principal de la plataforma de abastecimiento B2B."""

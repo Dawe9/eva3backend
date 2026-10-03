@@ -17,7 +17,7 @@
     .sort-control { display: flex; align-items: center; gap: .5rem; color: var(--muted); font-size: .76rem; }
     .sort-control .form-select { min-height: 38px; width: 180px; font-size: .78rem; }
     .supply-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; padding-bottom: 4rem; }
-    .supply-card { min-width: 0; background: #fff; border: 1px solid var(--line); transition: border-color .18s, transform .18s; }
+    .supply-card { min-width: 0; background: #fff; border: 1px solid var(--line); cursor: pointer; transition: border-color .18s, transform .18s; }
     .supply-card:hover { border-color: #aabcae; transform: translateY(-2px); }
     .supply-photo { position: relative; aspect-ratio: 1 / .88; overflow: hidden; background: #eaf0e9; }
     .supply-photo img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .35s; }
@@ -87,17 +87,28 @@
 const fallbackImage = 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=900&q=80';
 const money = value => `$${Number(value).toLocaleString('es-CL')}`;
 
+function currentUserRole() {
+    const token = localStorage.getItem('nexo-access-token');
+    if (!token) return null;
+    try {
+        const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        return JSON.parse(atob(payload)).role || null;
+    } catch (error) {
+        return null;
+    }
+}
+
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, character => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
 }
 
-async function addToCart(supplyId, button) {
+async function addToCart(supplyId, button, redirectToCart = false) {
     const token = localStorage.getItem('nexo-access-token');
     if (!token) {
-        window.location.href = '/login/?next=/products/';
+        window.location.href = redirectToCart ? '/login/?next=/cart/' : '/login/?next=/products/';
         return;
     }
-    button.disabled = true;
+    if (button) button.disabled = true;
     const response = await fetch('/api/carro-insumos/', {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
@@ -105,25 +116,33 @@ async function addToCart(supplyId, button) {
     });
     if (!response.ok) {
         document.querySelector('#catalog-live').textContent = 'No fue posible agregar el insumo. Revisa tu perfil institucional.';
-        button.disabled = false;
+        if (button) button.disabled = false;
         return;
     }
     const cart = await response.json();
     localStorage.setItem('nexo-cart', JSON.stringify(cart.items));
-    document.querySelector('#cart-count').textContent = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+    const totalItems = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+    const cartCount = document.querySelector('#cart-count');
+    if (cartCount) cartCount.textContent = totalItems;
     document.querySelector('#catalog-live').textContent = 'Insumo agregado a tu solicitud.';
-    button.textContent = 'Agregado';
-    window.setTimeout(() => { button.textContent = 'Agregar'; button.disabled = false; }, 1100);
+    if (button) {
+        button.textContent = 'Comprado';
+        window.setTimeout(() => { button.textContent = 'Comprar'; button.disabled = false; }, 1100);
+    }
+    if (redirectToCart) {
+        window.location.href = '/cart/';
+    }
 }
 
 function renderProducts(supplies) {
     const grid = document.querySelector('#products-grid');
+    const isWarehouseManager = currentUserRole() === 'gestor_bodega';
     if (!supplies.length) {
         grid.innerHTML = '<div class="catalog-empty"><strong>No encontramos insumos con esos filtros.</strong><br><span>Prueba otra categoría o elimina el rango de precio.</span></div>';
         return;
     }
     grid.innerHTML = supplies.map(supply => `
-        <article class="supply-card">
+        <article class="supply-card" data-supply-id="${supply.id}">
             <div class="supply-photo">
                 <img src="${escapeHtml(supply.image_url || fallbackImage)}" alt="${escapeHtml(supply.commercial_name)}" loading="lazy">
                 <span class="photo-fallback" aria-hidden="true">+</span>
@@ -136,7 +155,10 @@ function renderProducts(supplies) {
                 <div class="supply-lot"><span>Lote ${escapeHtml(supply.lot)}</span><span>Vence ${escapeHtml(supply.expiration_date)}</span></div>
                 <div class="supply-buy">
                     <strong class="supply-price">${money(supply.unit_price)}</strong>
-                    <button class="btn btn-success" data-supply-id="${supply.id}" ${supply.stock < 1 ? 'disabled' : ''}>Agregar</button>
+                    <div class="d-flex gap-2">
+                        ${isWarehouseManager ? `<button class="btn btn-outline-secondary" data-manage-supply="${supply.id}" type="button">Stock</button>` : ''}
+                        <button class="btn btn-success" data-supply-id="${supply.id}" ${supply.stock < 1 ? 'disabled' : ''}>Comprar</button>
+                    </div>
                 </div>
             </div>
         </article>`).join('');
@@ -171,8 +193,21 @@ async function loadProducts() {
 }
 
 document.querySelector('#products-grid').addEventListener('click', event => {
+    const stockButton = event.target.closest('[data-manage-supply]');
+    if (stockButton) {
+        window.location.href = '/gestor/';
+        return;
+    }
     const button = event.target.closest('[data-supply-id]');
-    if (button) addToCart(Number(button.dataset.supplyId), button);
+    const card = event.target.closest('.supply-card');
+    if (button) {
+        addToCart(Number(button.dataset.supplyId), button, false);
+        return;
+    }
+    if (card) {
+        const supplyId = Number(card.querySelector('[data-supply-id]')?.dataset.supplyId || card.dataset.supplyId);
+        if (supplyId) addToCart(supplyId, null, true);
+    }
 });
 document.querySelector('#filter-form').addEventListener('submit', event => {
     event.preventDefault();
