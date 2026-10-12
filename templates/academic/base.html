@@ -1,3 +1,4 @@
+{% load static %}
 <!doctype html>
 <html lang="es">
 <head>
@@ -5,6 +6,80 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Abastecimiento B2B{% endblock %}</title>
+    <link rel="icon" href="/favicon.ico" type="image/svg+xml">
+    <script>
+    function getTokenClaims(token) {
+        try {
+            let payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+            payload += '='.repeat((4 - payload.length % 4) % 4);
+            return JSON.parse(atob(payload));
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function getTokenRole(token) {
+        return getTokenClaims(token)?.role || null;
+    }
+
+    function clearAuthSession() {
+        sessionStorage.removeItem('nexo-access-token');
+        sessionStorage.removeItem('nexo-refresh-token');
+        sessionStorage.removeItem('nexo-cart');
+    }
+
+    async function getValidAccessToken() {
+        const accessToken = sessionStorage.getItem('nexo-access-token');
+        if (!accessToken) return null;
+
+        const claims = getTokenClaims(accessToken);
+        if (!claims?.exp) {
+            clearAuthSession();
+            return null;
+        }
+        if (claims.exp * 1000 > Date.now() + 60000) return accessToken;
+
+        const refreshToken = sessionStorage.getItem('nexo-refresh-token');
+        if (!refreshToken) {
+            clearAuthSession();
+            return null;
+        }
+
+        let response;
+        try {
+            response = await fetch('/api/token/refresh/', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({refresh: refreshToken})
+            });
+        } catch (error) {
+            throw new Error('No se pudo renovar la sesión. Comprueba tu conexión e inténtalo nuevamente.');
+        }
+
+        if (!response.ok) {
+            clearAuthSession();
+            return null;
+        }
+
+        const tokens = await response.json();
+        if (!tokens.access) {
+            clearAuthSession();
+            return null;
+        }
+        sessionStorage.setItem('nexo-access-token', tokens.access);
+        if (tokens.refresh) sessionStorage.setItem('nexo-refresh-token', tokens.refresh);
+        return tokens.access;
+    }
+
+    async function authenticatedFetch(url, options = {}) {
+        const accessToken = await getValidAccessToken();
+        if (!accessToken) throw new Error('Tu sesión venció. Inicia sesión nuevamente.');
+
+        const headers = new Headers(options.headers || {});
+        headers.set('Authorization', `Bearer ${accessToken}`);
+        return fetch(url, {...options, headers});
+    }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
@@ -60,7 +135,7 @@
                 <div class="navbar-nav mx-auto">
                     <a class="nav-link" href="/">Inicio</a>
                     <a class="nav-link" href="/products/">Catálogo</a>
-                    <a class="nav-link nav-link-cart" href="/cart/">
+                    <a class="nav-link nav-link-cart" href="/cart/" id="cart-nav-link">
                         <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <circle cx="9" cy="19" r="1.5"></circle>
                             <circle cx="17" cy="19" r="1.5"></circle>
@@ -71,7 +146,7 @@
                     </a>
                 </div>
                 <div class="nav-utility">
-                    <a class="btn btn-outline-success d-none" href="/gestor/" id="warehouse-link">Panel de administración</a>
+                    <a class="btn btn-outline-success d-none" href="/products/" id="warehouse-link">Modificar stock</a>
                     <a class="btn btn-outline-success" href="/login/" id="login-link">Ingresar</a>
                     <a class="btn btn-success" href="/register/" id="register-link">Crear cuenta</a>
                     <span class="small text-success d-none" id="session-status">Sesión activa</span>
@@ -86,8 +161,12 @@
     </footer>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+    localStorage.removeItem('nexo-access-token');
+    localStorage.removeItem('nexo-refresh-token');
+    localStorage.removeItem('nexo-cart');
+
     function refreshCartCount() {
-        const cart = JSON.parse(localStorage.getItem('nexo-cart') || '[]');
+        const cart = JSON.parse(sessionStorage.getItem('nexo-cart') || '[]');
         const items = Array.isArray(cart) ? cart : (cart.items || []);
         const count = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
         const cartCount = document.querySelector('#cart-count');
@@ -95,52 +174,54 @@
     }
 
     refreshCartCount();
-    window.addEventListener('storage', event => {
-        if (event.key === 'nexo-cart') refreshCartCount();
-    });
-
-    const accessToken = localStorage.getItem('nexo-access-token');
     const loginLink = document.querySelector('#login-link');
     const registerLink = document.querySelector('#register-link');
     const warehouseLink = document.querySelector('#warehouse-link');
     const sessionStatus = document.querySelector('#session-status');
     const logoutButton = document.querySelector('#logout-button');
-    function tokenRole(token) {
-        try {
-            const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-            return JSON.parse(atob(payload)).role;
-        } catch (error) {
-            return null;
-        }
-    }
-
     async function loadUserCart() {
-        if (!accessToken) return;
+        const accessToken = await getValidAccessToken();
+        if (!accessToken || getTokenRole(accessToken) !== 'institucion_medica') return;
         try {
-            const response = await fetch('/api/carro-insumos/', {
-                headers: { Authorization: `Bearer ${accessToken}` }
-            });
+            const response = await authenticatedFetch('/api/carro-insumos/');
             if (!response.ok) return;
             const payload = await response.json();
-            localStorage.setItem('nexo-cart', JSON.stringify(payload.items || []));
+            sessionStorage.setItem('nexo-cart', JSON.stringify(payload.items || []));
             refreshCartCount();
         } catch (error) {
             console.warn('No se pudo restaurar el carrito del usuario:', error);
         }
     }
 
-    if (accessToken) {
+    async function initializeSession() {
+        const accessToken = await getValidAccessToken();
+        if (!accessToken) {
+            refreshCartCount();
+            return;
+        }
         loginLink.classList.add('d-none');
         registerLink.classList.add('d-none');
-        if (tokenRole(accessToken) === 'gestor_bodega') warehouseLink.classList.remove('d-none');
+        const role = getTokenRole(accessToken);
+        if (role === 'gestor_bodega') {
+            warehouseLink.href = '/gestor/';
+            warehouseLink.textContent = 'Panel de administración';
+            warehouseLink.classList.remove('d-none');
+            document.querySelector('#cart-nav-link').classList.add('d-none');
+        }
         sessionStatus.classList.remove('d-none');
         logoutButton.classList.remove('d-none');
-        loadUserCart();
+        if (getTokenClaims(accessToken).is_superuser) {
+            warehouseLink.href = '/gestor/';
+            warehouseLink.textContent = 'Panel de administración';
+            warehouseLink.classList.remove('d-none');
+        }
+        if (role === 'institucion_medica') await loadUserCart();
     }
+    initializeSession().catch(error => console.warn('No se pudo validar la sesión:', error));
     logoutButton.addEventListener('click', () => {
-        localStorage.removeItem('nexo-access-token');
-        localStorage.removeItem('nexo-refresh-token');
-        localStorage.removeItem('nexo-cart');
+        sessionStorage.removeItem('nexo-access-token');
+        sessionStorage.removeItem('nexo-refresh-token');
+        sessionStorage.removeItem('nexo-cart');
         window.location.href = '/';
     });
     </script>

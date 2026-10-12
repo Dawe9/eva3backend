@@ -10,6 +10,7 @@ urlpatterns = [
     path('categorias/<int:pk>/', views.SupplyCategoryDetailView.as_view(), name='category-detail'),
     path('insumos/', views.MedicalSupplyListCreateView.as_view(), name='supply-list'),
     path('insumos/<int:pk>/', views.MedicalSupplyDetailView.as_view(), name='supply-detail'),
+    path('insumos/<int:pk>/agregar-stock/', views.MedicalSupplyRestockView.as_view(), name='supply-restock'),
     path('carro-insumos/', views.MedicalCartView.as_view(), name='medical-cart'),
     path('solicitudes/confirmar/', views.PurchaseRequestCheckoutView.as_view(), name='request-checkout'),
     path('mis-solicitudes/', views.MyPurchaseRequestsView.as_view(), name='my-requests'),

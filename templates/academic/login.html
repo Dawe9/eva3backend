@@ -26,22 +26,24 @@ document.querySelector('#login-form').addEventListener('submit', async event => 
     })});
     if (!response.ok) { status.className = 'text-danger'; status.textContent = 'Usuario o contrasena incorrectos.'; return; }
     const tokens = await response.json();
-    localStorage.setItem('nexo-access-token', tokens.access);
-    localStorage.setItem('nexo-refresh-token', tokens.refresh);
+    sessionStorage.setItem('nexo-access-token', tokens.access);
+    sessionStorage.setItem('nexo-refresh-token', tokens.refresh);
 
-    const userCartResponse = await fetch('/api/carro-insumos/', {
-        headers: { Authorization: `Bearer ${tokens.access}` }
-    });
-    if (userCartResponse.ok) {
+    if (getTokenRole(tokens.access) === 'institucion_medica') {
+        const userCartResponse = await authenticatedFetch('/api/carro-insumos/');
+        if (!userCartResponse.ok) {
+            status.className = 'text-danger';
+            status.textContent = 'No se pudo cargar el carrito. Inténtalo nuevamente.';
+            return;
+        }
         const payload = await userCartResponse.json();
-        localStorage.setItem('nexo-cart', JSON.stringify(payload.items || []));
+        sessionStorage.setItem('nexo-cart', JSON.stringify(payload.items || []));
     } else {
-        localStorage.setItem('nexo-cart', JSON.stringify([]));
+        sessionStorage.setItem('nexo-cart', JSON.stringify([]));
     }
 
-    window.location.href = '/';
-        const nextPage = new URLSearchParams(window.location.search).get('next');
-        window.location.href = nextPage && nextPage.startsWith('/') ? nextPage : '/';
+    const nextPage = new URLSearchParams(window.location.search).get('next');
+    window.location.href = nextPage && nextPage.startsWith('/') ? nextPage : '/';
 });
 </script>
 {% endblock %}

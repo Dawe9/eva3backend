@@ -27,6 +27,7 @@
     .summary-row strong { font-size: 1.05rem; }
     .summary-total { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #dfe7df; padding-top: 1.1rem; margin-top: 1rem; font-weight: 800; font-size: 1.6rem; }
     .btn-primary-buy { background: linear-gradient(90deg, #f3c15d, #f59b26); border: none; color: #0f172a; font-weight: 800; letter-spacing: .04em; padding: .9rem 1rem; width: 100%; border-radius: 0.8rem; margin-top: 1.2rem; }
+    .cart-stock-warning { margin: 0 0 1rem; }
     .promo-inline { display: flex; gap: .6rem; margin: 1rem 0 1.3rem; }
     .promo-inline input { flex: 1; }
     .promo-inline button { min-width: 120px; }
@@ -52,6 +53,10 @@
         <div id="cart-items" class="cart-list"></div>
         <aside class="cart-summary">
             <h2 class="h4 mb-3">Resumen de compra</h2>
+            <div class="alert alert-warning cart-stock-warning" id="cart-stock-warning" role="alert" hidden>
+                <div id="cart-stock-warning-message"></div>
+                <button type="button" class="btn btn-sm btn-outline-dark mt-2" id="refresh-cart-stock">Actualizar disponibilidad</button>
+            </div>
             <div class="summary-row"><span class="summary-label">Subtotal</span><strong id="subtotal-price">$0</strong></div>
             <div class="summary-row"><span class="summary-label">Despacho</span><strong>$0</strong></div>
             <div class="summary-total"><span>TOTAL</span><span id="cart-total">$0</span></div>
@@ -62,16 +67,22 @@
 <script>
 const money = value => `$${Number(value).toLocaleString('es-CL')}`;
 let cart = [];
+let stockWarnings = [];
 
 async function syncCartWithServer() {
-    const token = localStorage.getItem('nexo-access-token');
-    if (!token) return;
+    const token = await getValidAccessToken();
+    if (!token || getTokenRole(token) !== 'institucion_medica') {
+        cart = [];
+        stockWarnings = [];
+        return;
+    }
     try {
-        const response = await fetch('/api/carro-insumos/', { headers: { Authorization: `Bearer ${token}` } });
+        const response = await authenticatedFetch('/api/carro-insumos/');
         if (!response.ok) return;
         const payload = await response.json();
         cart = payload.items || [];
-        localStorage.setItem('nexo-cart', JSON.stringify(cart));
+        stockWarnings = payload.warnings || [];
+        sessionStorage.setItem('nexo-cart', JSON.stringify(cart));
     } catch (error) {
         console.warn('No se pudo sincronizar el carrito del servidor:', error);
     }
@@ -87,6 +98,15 @@ function renderCart() {
 
     const target = document.querySelector('#cart-items');
     if (!target) return;
+
+    const stockWarning = document.querySelector('#cart-stock-warning');
+    const stockWarningMessage = document.querySelector('#cart-stock-warning-message');
+    if (stockWarning && stockWarningMessage) {
+        stockWarning.hidden = stockWarnings.length === 0;
+        stockWarningMessage.textContent = stockWarnings.length
+            ? `${stockWarnings.map(warning => warning.message).join(' ')} Quita el producto agotado o actualiza la disponibilidad después de que se reponga el stock.`
+            : '';
+    }
 
     target.innerHTML = cart.length ? cart.map((item, index) => `
         <div class="cart-item">
@@ -109,58 +129,71 @@ function renderCart() {
     `).join('') : '<div class="p-4 text-secondary">Tu carrito está vacío. <a href="/products/">Explora el catálogo.</a></div>';
 
     const button = document.querySelector('#checkout-button');
-    if (button) button.disabled = !cart.length;
+    if (button) button.disabled = !cart.length || stockWarnings.length > 0;
 }
 
 async function changeQuantity(index, quantity) {
-    const token = localStorage.getItem('nexo-access-token');
+    const token = sessionStorage.getItem('nexo-access-token');
     const item = cart[index];
     if (!token || !item) return;
     const nextQty = Math.max(1, Number(quantity) || 1);
-    const response = await fetch('/api/carro-insumos/', {
+    const response = await authenticatedFetch('/api/carro-insumos/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ supply_id: item.supply, quantity: nextQty, increment: false })
     });
     if (response.ok) {
-        cart = (await response.json()).items;
-        localStorage.setItem('nexo-cart', JSON.stringify(cart));
+        const payload = await response.json();
+        cart = payload.items || [];
+        stockWarnings = payload.warnings || [];
+        sessionStorage.setItem('nexo-cart', JSON.stringify(cart));
+        renderCart();
+    } else {
+        const error = await response.json();
+        alert(Object.values(error).flat().join(' '));
+        await syncCartWithServer();
         renderCart();
     }
 }
 
 async function removeItem(index) {
-    const token = localStorage.getItem('nexo-access-token');
+    const token = sessionStorage.getItem('nexo-access-token');
     const item = cart[index];
     if (!token || !item) return;
-    const response = await fetch(`/api/carro-insumos/?supply_id=${item.supply}`, {
+    const response = await authenticatedFetch(`/api/carro-insumos/?supply_id=${item.supply}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
     });
     if (response.ok) {
-        cart = cart.filter(entry => entry.supply !== item.supply);
-        localStorage.setItem('nexo-cart', JSON.stringify(cart));
+        await syncCartWithServer();
         renderCart();
     }
 }
 
+document.querySelector('#refresh-cart-stock')?.addEventListener('click', async () => {
+    await syncCartWithServer();
+    renderCart();
+});
+
 document.querySelector('#checkout-button')?.addEventListener('click', async () => {
-    const token = localStorage.getItem('nexo-access-token');
+    const token = sessionStorage.getItem('nexo-access-token');
     if (!token) {
         window.location.href = '/login/?next=/cart/';
         return;
     }
-    const response = await fetch('/api/solicitudes/confirmar/', {
+    const response = await authenticatedFetch('/api/solicitudes/confirmar/', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
     });
     if (!response.ok) {
-        alert('No se pudo confirmar la solicitud. Verifica el stock y tu perfil institucional.');
+        const error = await response.json();
+        const message = Object.values(error).flat().join(' ');
+        alert(message || 'No se pudo confirmar la solicitud.');
+        await syncCartWithServer();
+        renderCart();
         return;
     }
     const order = await response.json();
     cart = [];
-    localStorage.setItem('nexo-cart', JSON.stringify(cart));
+    sessionStorage.setItem('nexo-cart', JSON.stringify(cart));
     renderCart();
     alert(`Solicitud #${order.id} creada y confirmada correctamente.`);
 });

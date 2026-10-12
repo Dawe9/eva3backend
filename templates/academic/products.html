@@ -17,7 +17,7 @@
     .sort-control { display: flex; align-items: center; gap: .5rem; color: var(--muted); font-size: .76rem; }
     .sort-control .form-select { min-height: 38px; width: 180px; font-size: .78rem; }
     .supply-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; padding-bottom: 4rem; }
-    .supply-card { min-width: 0; background: #fff; border: 1px solid var(--line); cursor: pointer; transition: border-color .18s, transform .18s; }
+    .supply-card { min-width: 0; background: #fff; border: 1px solid var(--line); transition: border-color .18s, transform .18s; }
     .supply-card:hover { border-color: #aabcae; transform: translateY(-2px); }
     .supply-photo { position: relative; aspect-ratio: 1 / .88; overflow: hidden; background: #eaf0e9; }
     .supply-photo img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .35s; }
@@ -88,7 +88,7 @@ const fallbackImage = 'https://images.unsplash.com/photo-1584308666744-24d5c474f
 const money = value => `$${Number(value).toLocaleString('es-CL')}`;
 
 function currentUserRole() {
-    const token = localStorage.getItem('nexo-access-token');
+    const token = sessionStorage.getItem('nexo-access-token');
     if (!token) return null;
     try {
         const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
@@ -103,24 +103,36 @@ function escapeHtml(value) {
 }
 
 async function addToCart(supplyId, button, redirectToCart = false) {
-    const token = localStorage.getItem('nexo-access-token');
-    if (!token) {
+    if (button && Number(button.dataset.stock) < 1) {
+        window.alert('Este insumo está agotado y no se puede agregar a tu solicitud.');
+        return;
+    }
+    const token = await getValidAccessToken();
+    if (!token || getTokenRole(token) !== 'institucion_medica') {
         window.location.href = redirectToCart ? '/login/?next=/cart/' : '/login/?next=/products/';
         return;
     }
     if (button) button.disabled = true;
-    const response = await fetch('/api/carro-insumos/', {
+    const response = await authenticatedFetch('/api/carro-insumos/', {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
         body: JSON.stringify({supply_id: supplyId, quantity: 1, increment: true})
     });
     if (!response.ok) {
-        document.querySelector('#catalog-live').textContent = 'No fue posible agregar el insumo. Revisa tu perfil institucional.';
+        const error = await response.json();
+        if (error.stock) {
+            window.alert(error.stock);
+            loadProducts().catch(loadError => {
+                document.querySelector('#catalog-live').textContent = loadError.message;
+            });
+        } else {
+            document.querySelector('#catalog-live').textContent = Object.values(error).flat().join(' ');
+        }
         if (button) button.disabled = false;
         return;
     }
     const cart = await response.json();
-    localStorage.setItem('nexo-cart', JSON.stringify(cart.items));
+    sessionStorage.setItem('nexo-cart', JSON.stringify(cart.items));
     const totalItems = cart.items.reduce((sum, item) => sum + item.quantity, 0);
     const cartCount = document.querySelector('#cart-count');
     if (cartCount) cartCount.textContent = totalItems;
@@ -142,7 +154,7 @@ function renderProducts(supplies) {
         return;
     }
     grid.innerHTML = supplies.map(supply => `
-        <article class="supply-card" data-supply-id="${supply.id}">
+        <article class="supply-card">
             <div class="supply-photo">
                 <img src="${escapeHtml(supply.image_url || fallbackImage)}" alt="${escapeHtml(supply.commercial_name)}" loading="lazy">
                 <span class="photo-fallback" aria-hidden="true">+</span>
@@ -156,8 +168,7 @@ function renderProducts(supplies) {
                 <div class="supply-buy">
                     <strong class="supply-price">${money(supply.unit_price)}</strong>
                     <div class="d-flex gap-2">
-                        ${isWarehouseManager ? `<button class="btn btn-outline-secondary" data-manage-supply="${supply.id}" type="button">Stock</button>` : ''}
-                        <button class="btn btn-success" data-supply-id="${supply.id}" ${supply.stock < 1 ? 'disabled' : ''}>Comprar</button>
+                        ${isWarehouseManager ? `<button class="btn btn-outline-secondary" data-restock-supply="${supply.id}" data-supply-name="${escapeHtml(supply.commercial_name)}" type="button">Modificar stock</button>` : `<button class="btn ${supply.stock < 1 ? 'btn-outline-secondary' : 'btn-success'}" data-supply-id="${supply.id}" data-stock="${supply.stock}">${supply.stock < 1 ? 'Sin stock' : 'Comprar'}</button>`}
                     </div>
                 </div>
             </div>
@@ -193,22 +204,52 @@ async function loadProducts() {
 }
 
 document.querySelector('#products-grid').addEventListener('click', event => {
-    const stockButton = event.target.closest('[data-manage-supply]');
-    if (stockButton) {
-        window.location.href = '/gestor/';
+    const restockButton = event.target.closest('[data-restock-supply]');
+    if (restockButton) {
+        restockSupply(restockButton);
         return;
     }
     const button = event.target.closest('[data-supply-id]');
-    const card = event.target.closest('.supply-card');
     if (button) {
         addToCart(Number(button.dataset.supplyId), button, false);
-        return;
-    }
-    if (card) {
-        const supplyId = Number(card.querySelector('[data-supply-id]')?.dataset.supplyId || card.dataset.supplyId);
-        if (supplyId) addToCart(supplyId, null, true);
     }
 });
+
+async function restockSupply(button) {
+    const quantity = window.prompt(
+        `¿Cuántas cajas deseas agregar a "${button.dataset.supplyName}"?`,
+        '1'
+    );
+    if (quantity === null) return;
+
+    const quantityToAdd = Number(quantity);
+    if (!Number.isSafeInteger(quantityToAdd) || quantityToAdd < 1) {
+        window.alert('Ingresa una cantidad entera mayor que cero.');
+        return;
+    }
+
+    button.disabled = true;
+    try {
+        const response = await authenticatedFetch(`/api/insumos/${button.dataset.restockSupply}/agregar-stock/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `******`
+            },
+            body: JSON.stringify({quantity: quantityToAdd})
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(Object.values(payload).flat().join(' ') || 'No fue posible agregar el stock.');
+        }
+        window.alert(`Stock actualizado: ahora hay ${payload.stock} cajas disponibles.`);
+        await loadProducts();
+    } catch (error) {
+        window.alert(error.message);
+        button.disabled = false;
+    }
+}
+
 document.querySelector('#filter-form').addEventListener('submit', event => {
     event.preventDefault();
     loadProducts().catch(error => { document.querySelector('#catalog-live').textContent = error.message; });

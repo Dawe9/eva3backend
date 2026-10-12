@@ -1,0 +1,19 @@
+{% extends "admin/base.html" %}
+{% block title %}Administración | Botica Institucional{% endblock %}
+
+{% block branding %}
+<div id="site-name">
+    <a href="{% url 'home' %}" aria-label="Volver al inicio de Botica Institucional">
+        <span class="admin-brand-mark" aria-hidden="true">+</span>
+        <span class="admin-brand-copy"><strong>BOTICA</strong><small>INSTITUCIONAL</small></span>
+        <span class="admin-brand-label">Administración</span>
+    </a>
+</div>
+{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+{% include "admin/admin_theme.css" %}
+</style>
+{% endblock %}

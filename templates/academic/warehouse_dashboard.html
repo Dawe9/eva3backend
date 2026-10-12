@@ -117,7 +117,7 @@
     </div>
 </div>
 <script>
-const managerToken = localStorage.getItem('nexo-access-token');
+let managerToken = null;
 const money = value => `$${Number(value).toLocaleString('es-CL')}`;
 let supplies = [];
 let requests = [];
@@ -128,17 +128,8 @@ function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, character => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
 }
 
-function decodeRole(token) {
-    try {
-        const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-        return JSON.parse(atob(payload)).role;
-    } catch (error) {
-        return null;
-    }
-}
-
 async function apiRequest(path, options = {}) {
-    const response = await fetch(path, {
+    const response = await authenticatedFetch(path, {
         ...options,
         headers: {
             Authorization: `Bearer ${managerToken}`,
@@ -359,18 +350,23 @@ document.querySelector('#requests-body').addEventListener('click', async event =
     } catch (error) { showMessage('requests-message', error.message, true); }
 });
 
-if (!managerToken || decodeRole(managerToken) !== 'gestor_bodega') {
-    document.querySelector('#access-warning').hidden = false;
-} else {
+async function initializeDashboard() {
+    managerToken = await getValidAccessToken();
+    const claims = managerToken ? getTokenClaims(managerToken) : null;
+    if (!claims || claims.role !== 'gestor_bodega') {
+        document.querySelector('#access-warning').hidden = false;
+        return;
+    }
     document.querySelector('#warehouse-app').hidden = false;
-    loadDashboard().catch(error => showMessage('inventory-message', error.message, true));
+    await loadDashboard();
 }
+initializeDashboard().catch(error => showMessage('inventory-message', error.message, true));
 
 document.querySelector('#open-docs').addEventListener('click', async () => {
     const button = document.querySelector('#open-docs');
     button.disabled = true;
     try {
-        const response = await fetch('/api/docs/session/', {
+        const response = await authenticatedFetch('/api/docs/session/', {
             method: 'POST',
             headers: {Authorization: `Bearer ${managerToken}`}
         });

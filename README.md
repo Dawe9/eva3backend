@@ -43,10 +43,10 @@ Este comando crea categorías e insumos de ejemplo sin duplicar registros al eje
 ## Ejecución
 
 ```powershell
-py manage.py runserver
+py manage.py runserver --insecure
 ```
 
-Abrir http://127.0.0.1:8000/.
+`--insecure` permite servir los archivos estáticos del administrador durante el desarrollo local cuando `DEBUG` está desactivado. No debe usarse en producción. Abrir http://127.0.0.1:8000/.
 
 ## Rutas principales
 

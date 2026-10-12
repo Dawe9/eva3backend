@@ -6,12 +6,13 @@ import logging
 from django.contrib.auth import login
 from django.db import DatabaseError, transaction
 from django.db.models import Count, Q
-from django.shortcuts import render
+from django.http import HttpResponse
+from django.shortcuts import redirect, render
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, status
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
@@ -27,7 +28,7 @@ from .models import (
     PurchaseRequestItem,
     SupplyCategory,
 )
-from .permissions import IsMedicalInstitution, IsWarehouseManager
+from .permissions import IsMedicalInstitution, IsSuperUser, IsWarehouseManager
 from .serializers import (
     CartItemInputSerializer,
     CartSerializer,
@@ -35,6 +36,7 @@ from .serializers import (
     MedicalSupplySerializer,
     PurchaseRequestSerializer,
     PurchaseRequestStatusSerializer,
+    StockRestockSerializer,
     SupplyCategorySerializer,
 )
 
@@ -87,13 +89,24 @@ def login_page(request):
     return render(request, 'academic/login.html')
 
 
+def favicon(request):
+    """Entrega un favicon para los navegadores que solicitan /favicon.ico."""
+    return HttpResponse(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
+        '<rect width="32" height="32" rx="6" fill="#174b3f"/>'
+        '<path d="M9 16h14M16 9v14" stroke="#d8e8a0" stroke-width="4"/>'
+        '</svg>',
+        content_type='image/svg+xml',
+    )
+
+
 def register_page(request):
     """Renderiza el alta pública de una cuenta de institución médica."""
     return render(request, 'academic/register.html')
 
 
 def warehouse_dashboard_page(request):
-    """Renderiza el panel operativo del gestor de bodega."""
+    """Mantiene el panel de gestión accesible para el rol de bodega."""
     return render(request, 'academic/warehouse_dashboard.html')
 
 
@@ -117,7 +130,7 @@ class InstitutionRegistrationView(APIView):
 class DocumentationSessionView(APIView):
     """Crea una sesión Django para que Swagger use la autenticación del administrador."""
 
-    permission_classes = [IsAuthenticated, IsAdminUser]
+    permission_classes = [IsAuthenticated, IsSuperUser]
 
     @extend_schema(request=None, responses={204: None})
     def post(self, request):
@@ -130,12 +143,12 @@ class DocumentationSessionView(APIView):
 
 
 class RoleAwareWritePermissions:
-    """Permite lectura pública y restringe las mutaciones del catálogo al gestor de bodega."""
+    """Permite lectura pública y limita la gestión completa del catálogo al superusuario."""
 
     def get_permissions(self):
         if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
             return [AllowAny()]
-        return [IsAuthenticated(), IsWarehouseManager()]
+        return [IsAuthenticated(), IsSuperUser()]
 
 
 class SupplyCategoryListCreateView(RoleAwareWritePermissions, generics.ListCreateAPIView):
@@ -182,6 +195,25 @@ class MedicalSupplyDetailView(RoleAwareWritePermissions, generics.RetrieveUpdate
         return queryset
 
 
+class MedicalSupplyRestockView(APIView):
+    """Agrega unidades al stock actual sin requerir editar los demás datos del insumo."""
+
+    permission_classes = [IsAuthenticated, IsWarehouseManager]
+
+    @extend_schema(request=StockRestockSerializer, responses=MedicalSupplySerializer)
+    def post(self, request, pk):
+        serializer = StockRestockSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            supply = generics.get_object_or_404(
+                MedicalSupply.objects.select_for_update(),
+                pk=pk,
+            )
+            supply.stock += serializer.validated_data['quantity']
+            supply.save(update_fields=['stock'])
+        return Response(MedicalSupplySerializer(supply).data)
+
+
 class MedicalCartView(APIView):
     """Lee y modifica el carrito persistente del usuario sin reservar ni descontar inventario."""
 
@@ -197,18 +229,30 @@ class MedicalCartView(APIView):
     def post(self, request):
         input_serializer = CartItemInputSerializer(data=request.data)
         input_serializer.is_valid(raise_exception=True)
-        supply = generics.get_object_or_404(
-            MedicalSupply,
-            pk=input_serializer.validated_data['supply_id'],
-            is_active=True,
-        )
         with transaction.atomic():
             cart, _ = Cart.objects.get_or_create(user=request.user)
             cart = Cart.objects.select_for_update().get(pk=cart.pk)
+            supply = generics.get_object_or_404(
+                MedicalSupply.objects.select_for_update(),
+                pk=input_serializer.validated_data['supply_id'],
+                is_active=True,
+            )
             item = CartItem.objects.select_for_update().filter(cart=cart, supply=supply).first()
             quantity = input_serializer.validated_data['quantity']
+            requested_quantity = (
+                item.quantity + quantity
+                if item and input_serializer.validated_data['increment']
+                else quantity
+            )
+            if requested_quantity > supply.stock:
+                raise ValidationError({
+                    'stock': (
+                        f'No hay stock suficiente para {supply.commercial_name}. '
+                        f'Quedan {supply.stock} unidades disponibles.'
+                    )
+                })
             if item:
-                item.quantity = item.quantity + quantity if input_serializer.validated_data['increment'] else quantity
+                item.quantity = requested_quantity
                 item.save(update_fields=['quantity'])
             else:
                 CartItem.objects.create(cart=cart, supply=supply, quantity=quantity)
@@ -329,9 +373,9 @@ class MyPurchaseRequestsView(generics.ListAPIView):
 
 
 class WarehousePurchaseRequestsView(generics.ListAPIView):
-    """Entrega al gestor de bodega el listado completo de solicitudes para su operación."""
+    """Entrega al administrador el listado completo de solicitudes."""
 
-    permission_classes = [IsAuthenticated, IsWarehouseManager]
+    permission_classes = [IsAuthenticated, IsSuperUser]
     serializer_class = PurchaseRequestSerializer
     queryset = PurchaseRequest.objects.select_related('institution').prefetch_related('items').order_by('-created_at')
 
@@ -339,7 +383,7 @@ class WarehousePurchaseRequestsView(generics.ListAPIView):
 class PurchaseRequestStatusView(APIView):
     """Aplica transiciones válidas de estado y sincroniza el inventario en la misma transacción."""
 
-    permission_classes = [IsAuthenticated, IsWarehouseManager]
+    permission_classes = [IsAuthenticated, IsSuperUser]
     allowed_transitions = {
         PurchaseRequest.Status.PENDING: {
             PurchaseRequest.Status.PAID,

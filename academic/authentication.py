@@ -32,6 +32,7 @@ class RoleTokenObtainPairSerializer(TokenObtainPairSerializer):
             profile.save(update_fields=['role'])
         token['role'] = profile.role
         token['institution_id'] = profile.institution_id
+        token['is_superuser'] = user.is_superuser
         return token
 
 

@@ -90,7 +90,8 @@
             <div class="row g-3">
                 <div class="col-md-4 field">
                     <label for="tax-id">RUT / identificador tributario</label>
-                    <input class="form-control" id="tax-id" maxlength="20" autocomplete="off" placeholder="Ingresa tu RUT">
+                    <input class="form-control" id="tax-id" maxlength="12" inputmode="text" autocomplete="off" placeholder="Ej: 12.345.678-9" aria-describedby="tax-id-help">
+                    <small id="tax-id-help" class="text-secondary">Hasta 8 dígitos y un dígito verificador (0-9 o K).</small>
                 </div>
                 <div class="col-md-4 field">
                     <label for="username">Usuario</label>
@@ -99,6 +100,11 @@
                 <div class="col-md-4 field">
                     <label for="email">Correo electrónico</label>
                     <input class="form-control" id="email" type="email" required autocomplete="email" placeholder="Ingresa tu correo electrónico">
+                </div>
+
+                <div class="col-md-4 field">
+                    <label for="birth-date">Fecha de nacimiento</label>
+                    <input class="form-control" id="birth-date" type="date" required autocomplete="bday">
                 </div>
 
                 <div class="col-md-4 field">
@@ -121,6 +127,50 @@
 </div>
 
 <script>
+const taxIdInput = document.querySelector('#tax-id');
+const birthDateInput = document.querySelector('#birth-date');
+const today = new Date();
+birthDateInput.max = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, '0'),
+    String(today.getDate()).padStart(2, '0')
+].join('-');
+
+function formatTaxId(value) {
+    const cleaned = value.toUpperCase().replace(/[^0-9K]/g, '');
+    if (cleaned.length < 2) {
+        return cleaned;
+    }
+
+    const hasKVerifier = cleaned.endsWith('K');
+    const digits = cleaned.replace(/\D/g, '').slice(0, hasKVerifier ? 8 : 9);
+    const verifier = hasKVerifier ? 'K' : digits.slice(-1);
+    const body = hasKVerifier ? digits : digits.slice(0, -1);
+
+    if (!verifier) {
+        return body;
+    }
+
+    const groupedBody = body.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return `${groupedBody}-${verifier}`;
+}
+
+taxIdInput.addEventListener('input', () => {
+    const cursor = taxIdInput.selectionStart ?? taxIdInput.value.length;
+    const charactersBeforeCursor = taxIdInput.value.slice(0, cursor).replace(/[^0-9K]/gi, '').length;
+    taxIdInput.value = formatTaxId(taxIdInput.value);
+
+    let nextCursor = 0;
+    let countedCharacters = 0;
+    while (nextCursor < taxIdInput.value.length && countedCharacters < charactersBeforeCursor) {
+        if (/[0-9K]/i.test(taxIdInput.value[nextCursor])) {
+            countedCharacters += 1;
+        }
+        nextCursor += 1;
+    }
+    taxIdInput.setSelectionRange(nextCursor, nextCursor);
+});
+
 document.querySelector('#registration-form').addEventListener('submit', async event => {
     event.preventDefault();
     const status = document.querySelector('#registration-status');
@@ -131,10 +181,10 @@ document.querySelector('#registration-form').addEventListener('submit', async ev
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            institution_name: 'Institución médica',
             tax_id: document.querySelector('#tax-id').value,
             username: document.querySelector('#username').value,
             email: document.querySelector('#email').value,
+            birth_date: document.querySelector('#birth-date').value,
             password: document.querySelector('#password').value,
             password_confirm: document.querySelector('#password-confirm').value
         })

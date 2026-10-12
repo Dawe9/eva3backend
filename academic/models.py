@@ -23,6 +23,7 @@ class Profile(models.Model):
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     role = models.CharField(max_length=30, choices=Role.choices, default=Role.MEDICAL_INSTITUTION)
+    birth_date = models.DateField(null=True, blank=True)
     institution = models.ForeignKey(
         Institution,
         on_delete=models.SET_NULL,

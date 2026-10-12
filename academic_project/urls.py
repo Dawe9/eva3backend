@@ -3,15 +3,16 @@
 from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
-from rest_framework.permissions import IsAdminUser
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from academic import views
 from academic.authentication import RoleTokenObtainPairView
+from academic.permissions import IsSuperUser
 
 urlpatterns = [
     # Panel de administración opcional de Django.
     path('admin/', admin.site.urls),
+    path('favicon.ico', views.favicon, name='favicon'),
     # Páginas visibles para el cliente de la tienda.
     path('', views.home, name='home'),
     path('products/', views.products_page, name='products'),
@@ -24,15 +25,15 @@ urlpatterns = [
     path('api/token/', RoleTokenObtainPairView.as_view(), name='token-obtain-pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
     path('api/docs/session/', views.DocumentationSessionView.as_view(), name='docs-session'),
-    path('api/schema/', SpectacularAPIView.as_view(permission_classes=[IsAdminUser]), name='schema'),
+    path('api/schema/', SpectacularAPIView.as_view(permission_classes=[IsSuperUser]), name='schema'),
     path(
         'api/docs/',
-        SpectacularSwaggerView.as_view(url_name='schema', permission_classes=[IsAdminUser]),
+        SpectacularSwaggerView.as_view(url_name='schema', permission_classes=[IsSuperUser]),
         name='swagger-ui',
     ),
     path(
         'doc/',
-        SpectacularSwaggerView.as_view(url_name='schema', permission_classes=[IsAdminUser]),
+        SpectacularSwaggerView.as_view(url_name='schema', permission_classes=[IsSuperUser]),
         name='swagger-ui-short',
     ),
     # La API separa lectura pública, clientes institucionales y gestión de bodega.

@@ -1,8 +1,11 @@
 """Serializers de catálogo, carro y solicitudes de abastecimiento."""
 
+import re
+
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils import timezone
 
 from .models import (
     Cart,
@@ -23,8 +26,9 @@ class InstitutionRegistrationSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(min_length=8, write_only=True)
     password_confirm = serializers.CharField(min_length=8, write_only=True)
-    institution_name = serializers.CharField(max_length=180)
+    institution_name = serializers.CharField(max_length=180, required=False, allow_blank=True)
     tax_id = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    birth_date = serializers.DateField(required=False, allow_null=True)
 
     def validate_username(self, value):
         if get_user_model().objects.filter(username__iexact=value).exists():
@@ -36,10 +40,31 @@ class InstitutionRegistrationSerializer(serializers.Serializer):
             raise serializers.ValidationError('Este correo electrónico ya está registrado.')
         return value
 
+    def validate_tax_id(self, value):
+        value = value.strip().upper()
+        if not value:
+            return value
+
+        compact_value = value.replace('.', '').replace('-', '')
+        if not re.fullmatch(r'\d{1,8}[0-9K]', compact_value):
+            raise serializers.ValidationError(
+                'Ingresa un RUT válido con hasta 8 dígitos y un dígito verificador.'
+            )
+
+        body, verifier = compact_value[:-1], compact_value[-1]
+        grouped_body = re.sub(r'\B(?=(\d{3})+(?!\d))', '.', body)
+        return f'{grouped_body}-{verifier}'
+
     def validate_institution_name(self, value):
-        if Institution.objects.filter(name__iexact=value.strip()).exists():
+        value = value.strip()
+        if value and Institution.objects.filter(name__iexact=value).exists():
             raise serializers.ValidationError('Esta institución ya está registrada.')
-        return value.strip()
+        return value
+
+    def validate_birth_date(self, value):
+        if value and value > timezone.localdate():
+            raise serializers.ValidationError('La fecha de nacimiento no puede ser futura.')
+        return value
 
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
@@ -49,10 +74,19 @@ class InstitutionRegistrationSerializer(serializers.Serializer):
     def create(self, validated_data):
         user_model = get_user_model()
         with transaction.atomic():
-            institution = Institution.objects.create(
-                name=validated_data['institution_name'],
-                tax_id=validated_data.get('tax_id', ''),
-            )
+            tax_id = validated_data.get('tax_id', '').strip()
+            institution_name = validated_data.get('institution_name', '').strip()
+            institution = None
+            if not institution_name and tax_id:
+                institution = Institution.objects.filter(tax_id=tax_id).first()
+            if institution is None:
+                institution_name = institution_name or (
+                    f'Institución {tax_id}' if tax_id else f"Institución de {validated_data['username']}"
+                )
+                institution, _ = Institution.objects.get_or_create(
+                    name=institution_name,
+                    defaults={'tax_id': tax_id},
+                )
             user = user_model.objects.create_user(
                 username=validated_data['username'],
                 email=validated_data['email'],
@@ -62,6 +96,7 @@ class InstitutionRegistrationSerializer(serializers.Serializer):
                 user=user,
                 institution=institution,
                 role=Profile.Role.MEDICAL_INSTITUTION,
+                birth_date=validated_data.get('birth_date'),
             )
         return user
 
@@ -85,6 +120,12 @@ class MedicalSupplySerializer(serializers.ModelSerializer):
             'id', 'category', 'category_name', 'commercial_name', 'active_ingredient',
             'lot', 'expiration_date', 'unit_price', 'image_url', 'stock', 'is_active',
         ]
+
+
+class StockRestockSerializer(serializers.Serializer):
+    """Valida la cantidad de cajas que se agregarán al inventario."""
+
+    quantity = serializers.IntegerField(min_value=1)
 
 
 class CartItemSerializer(serializers.ModelSerializer):
