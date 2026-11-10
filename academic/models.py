@@ -2,6 +2,8 @@
 
 from django.contrib.auth.models import User
 from django.db import models
+from django.db.models import Q
+from django.core.validators import MinValueValidator
 
 
 class Institution(models.Model):
@@ -127,10 +129,42 @@ class PurchaseRequestItem(models.Model):
 class Material(models.Model):
     """Material o ingrediente base del taller de pastelería para control de inventario y BOM."""
 
+    class Unit(models.TextChoices):
+        KILOGRAM = 'kg', 'Kilogramos (kg)'
+        GRAM = 'g', 'Gramos (g)'
+        LITER = 'L', 'Litros (L)'
+        MILLILITER = 'ml', 'Mililitros (ml)'
+        UNIT = 'unidades', 'Unidades'
+        PACKAGE = 'paquetes', 'Paquetes'
+
     name = models.CharField(max_length=160, unique=True)
-    stock = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    unit = models.CharField(max_length=30, default='kg')
+    stock = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0)],
+    )
+    minimum_stock = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=5,
+        validators=[MinValueValidator(0)],
+    )
+    unit = models.CharField(max_length=30, choices=Unit.choices, default=Unit.KILOGRAM)
     is_active = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=Q(stock__gte=0), name='material_stock_nonnegative'),
+            models.CheckConstraint(
+                condition=Q(minimum_stock__gte=0),
+                name='material_min_stock_nonnegative',
+            ),
+        ]
+
+    @property
+    def needs_restock(self):
+        return self.stock <= self.minimum_stock
 
     def __str__(self):
         return self.name
@@ -165,10 +199,32 @@ class BakeryOrder(models.Model):
         return f'Pedido #{self.pk} - {self.customer_name}'
 
 
+class BakeryProductOption(models.Model):
+    """Opción de torta predefinida o personalizada ofrecida al registrar pedidos."""
+
+    name = models.CharField(max_length=180, unique=True)
+    default_price = models.DecimalField(max_digits=12, decimal_places=0, null=True, blank=True)
+    is_customized = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['is_customized', 'name']
+
+    def __str__(self):
+        return self.name
+
+
 class BakeryOrderItem(models.Model):
     """Línea del pedido con descripción del producto final y cantidades requeridas."""
 
     order = models.ForeignKey(BakeryOrder, on_delete=models.CASCADE, related_name='items')
+    product_option = models.ForeignKey(
+        BakeryProductOption,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='order_items',
+    )
     product_name = models.CharField(max_length=180)
     quantity = models.PositiveIntegerField(default=1)
     unit_price = models.DecimalField(max_digits=12, decimal_places=2)

@@ -1,24 +1,24 @@
 :root {
     color-scheme: light;
-    --primary: #174b3f;
-    --secondary: #3c775e;
-    --accent: #d8e8a0;
-    --header-bg: #174b3f;
-    --header-color: #f5f8ef;
-    --breadcrumbs-bg: #3c775e;
-    --link-fg: #174b3f;
-    --link-hover-color: #3c775e;
-    --link-selected-fg: #10392f;
-    --hairline-color: #dfe5dd;
-    --border-color: #dfe5dd;
-    --selected-row: #edf4e8;
-    --darkened-bg: #eff2eb;
-    --body-bg: #f7f8f3;
-    --body-fg: #1b2924;
-    --button-bg: #174b3f;
-    --button-hover-bg: #10392f;
-    --default-button-bg: #3c775e;
-    --default-button-hover-bg: #2d634d;
+    --primary: #704336;
+    --secondary: #a9684c;
+    --accent: #f1c8b0;
+    --header-bg: #704336;
+    --header-color: #fffaf4;
+    --breadcrumbs-bg: #a9684c;
+    --link-fg: #704336;
+    --link-hover-color: #a9684c;
+    --link-selected-fg: #563428;
+    --hairline-color: #ece3da;
+    --border-color: #ece3da;
+    --selected-row: #f7f0e9;
+    --darkened-bg: #f5eee6;
+    --body-bg: #fbf7f1;
+    --body-fg: #392e28;
+    --button-bg: #704336;
+    --button-hover-bg: #563428;
+    --default-button-bg: #a9684c;
+    --default-button-hover-bg: #8d563e;
     --delete-button-bg: #a94332;
     --delete-button-hover-bg: #873729;
 }
@@ -66,7 +66,7 @@ a:focus {
     padding: 0.75rem 2.5rem;
     background: var(--header-bg);
     color: var(--header-color);
-    box-shadow: 0 3px 14px rgb(23 75 63 / 12%);
+    box-shadow: 0 3px 14px rgb(112 67 54 / 12%);
 }
 
 #branding,
@@ -123,7 +123,7 @@ a:focus {
 }
 
 #user-tools {
-    color: #e8f0e8;
+    color: #f1dfd2;
     font-size: 0.78rem;
     text-align: right;
 }
@@ -136,7 +136,7 @@ a:focus {
     padding: 0.85rem 2.5rem;
     background: var(--breadcrumbs-bg);
     color: #fff;
-    box-shadow: 0 1px 0 rgb(23 75 63 / 8%);
+    box-shadow: 0 1px 0 rgb(112 67 54 / 8%);
 }
 
 #breadcrumbs a {

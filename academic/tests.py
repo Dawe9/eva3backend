@@ -5,12 +5,25 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.db import OperationalError
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.management import call_command
+from django.db import IntegrityError, OperationalError, transaction
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import AccessToken
 
-from .models import Institution, MedicalSupply, Profile, PurchaseRequest, SupplyCategory
+from .forms import BakeryOrderForm
+from .models import (
+    BakeryOrder,
+    BakeryProductOption,
+    BOMItem,
+    Institution,
+    Material,
+    MedicalSupply,
+    Profile,
+    PurchaseRequest,
+    SupplyCategory,
+)
 
 
 class PharmacyApiTests(TestCase):
@@ -206,10 +219,16 @@ class PharmacyApiTests(TestCase):
         self.assertEqual(self.supply.stock, 5)
 
     def test_html_pages_show_student_footer(self):
-        for path in ['/', '/products/', '/cart/', '/login/', '/register/', '/gestor/']:
+        for path in ['/', '/login/', '/gestor/']:
             response = self.client.get(path)
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, 'Completar nombre del estudiante')
+
+    def test_legacy_customer_pages_redirect_to_internal_operations_panel(self):
+        for path in ['/products/', '/cart/', '/register/']:
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertRedirects(response, '/')
 
     def test_favicon_is_served(self):
         response = self.client.get('/favicon.ico')
@@ -221,12 +240,12 @@ class PharmacyApiTests(TestCase):
         response = self.client.get('/admin/login/')
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'BOTICA')
+        self.assertContains(response, 'DULCE ARTE')
         self.assertContains(response, 'color-scheme: light')
         self.assertContains(response, 'href="/"')
 
     def test_account_and_cart_storage_is_scoped_to_each_tab(self):
-        for path in ['/login/', '/products/', '/cart/', '/gestor/']:
+        for path in ['/login/', '/gestor/']:
             response = self.client.get(path)
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, 'sessionStorage')
@@ -237,7 +256,324 @@ class PharmacyApiTests(TestCase):
         response = self.client.get('/gestor/')
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Panel de administración')
+        self.assertContains(response, 'Panel del taller')
+
+    def test_dashboard_shows_only_materials_and_orders_from_database(self):
+        empty_dashboard = self.client.get('/')
+
+        self.assertEqual(empty_dashboard.status_code, 200)
+        self.assertContains(empty_dashboard, 'Inventario aún no configurado')
+        self.assertContains(empty_dashboard, 'No hay pedidos listos para despacho')
+        self.assertNotContains(empty_dashboard, 'Chocolate cobertura')
+        self.assertNotContains(empty_dashboard, '#DA-104')
+
+        material = Material.objects.create(
+            name='Harina de prueba',
+            stock=2,
+            minimum_stock=5,
+            unit='kg',
+        )
+        order = BakeryOrder.objects.create(
+            customer_name='Cliente de prueba',
+            order_details='Torta de cumpleaños',
+            delivery_date=date(2026, 11, 12),
+            status=BakeryOrder.Status.RECEIVED,
+        )
+        dashboard = self.client.get('/')
+
+        self.assertContains(dashboard, material.name)
+        self.assertContains(dashboard, '2 kg')
+        self.assertContains(dashboard, 'Solicitar reposición')
+        self.assertContains(dashboard, f'#DA-{order.pk}')
+        self.assertContains(dashboard, order.customer_name)
+        self.assertNotContains(dashboard, 'Chocolate cobertura')
+
+    def test_dashboard_limits_the_inventory_preview_to_five_materials(self):
+        for index in range(1, 7):
+            Material.objects.create(name=f'Ingrediente {index:02}', stock=index, minimum_stock=0)
+
+        response = self.client.get('/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Mostrando 5 de 6 insumos')
+        self.assertContains(response, 'Ingrediente 05')
+        self.assertEqual(response.content.count(b'class="stock-row"'), 5)
+        self.assertContains(response, 'Ver inventario completo')
+
+    def test_material_stock_and_minimum_cannot_be_negative(self):
+        material = Material(
+            name='Stock inválido',
+            stock=Decimal('-1'),
+            minimum_stock=Decimal('0'),
+        )
+        with self.assertRaises(DjangoValidationError):
+            material.full_clean()
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Material.objects.create(
+                    name='Stock negativo en base',
+                    stock=Decimal('-1'),
+                    minimum_stock=Decimal('0'),
+                )
+
+    def test_bom_deduction_aggregates_duplicate_lines_before_decrement(self):
+        material = Material.objects.create(name='Harina', stock=3, minimum_stock=1)
+        order = BakeryOrder.objects.create(
+            customer_name='Cliente BOM',
+            status=BakeryOrder.Status.QUALITY_CONTROL,
+        )
+        BOMItem.objects.create(order=order, material=material, quantity=Decimal('2'))
+        BOMItem.objects.create(order=order, material=material, quantity=Decimal('2'))
+        self.authenticate(self.admin)
+
+        response = self.client.patch(
+            f'/api/pedidos/{order.pk}/estado/',
+            {'status': BakeryOrder.Status.READY},
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        material.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(material.stock, Decimal('3.00'))
+        self.assertEqual(order.status, BakeryOrder.Status.QUALITY_CONTROL)
+
+    def test_bom_stock_is_deducted_when_production_order_becomes_ready(self):
+        material = Material.objects.create(name='Azúcar', stock=8, minimum_stock=1)
+        order = BakeryOrder.objects.create(
+            customer_name='Cliente pedido listo',
+            status=BakeryOrder.Status.QUALITY_CONTROL,
+        )
+        BOMItem.objects.create(order=order, material=material, quantity=Decimal('2'))
+        self.authenticate(self.admin)
+
+        response = self.client.patch(
+            f'/api/pedidos/{order.pk}/estado/',
+            {'status': BakeryOrder.Status.READY},
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], BakeryOrder.Status.READY)
+        material.refresh_from_db()
+        order.refresh_from_db()
+        self.assertEqual(material.stock, Decimal('6.00'))
+        self.assertEqual(order.status, BakeryOrder.Status.READY)
+
+    def test_dashboard_links_open_focused_inventory_and_order_pages(self):
+        self.client.force_login(self.admin)
+        dashboard = self.client.get('/')
+
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertContains(dashboard, '/inventario/')
+        self.assertContains(dashboard, '/pedidos/')
+        self.assertEqual(self.client.get('/inventario/').status_code, 200)
+        self.assertEqual(self.client.get('/pedidos/').status_code, 200)
+
+    def test_order_management_is_not_registered_in_django_admin(self):
+        self.client.force_login(self.admin)
+        admin_index = self.client.get('/admin/')
+
+        self.assertEqual(admin_index.status_code, 200)
+        self.assertNotContains(admin_index, 'Pedidos de pastelería')
+        self.assertEqual(self.client.get('/admin/academic/bakeryorder/').status_code, 404)
+        self.assertEqual(self.client.get('/admin/academic/bakeryorderitem/').status_code, 404)
+        self.assertEqual(self.client.get('/admin/academic/bomitem/').status_code, 404)
+
+    def test_delivery_date_cannot_be_in_the_past_and_date_picker_starts_today(self):
+        today = timezone.localdate()
+        yesterday = today - timedelta(days=1)
+        today_form = BakeryOrderForm({
+            'customer_name': 'Cliente fecha de hoy',
+            'delivery_date': today.isoformat(),
+        })
+        past_form = BakeryOrderForm({
+            'customer_name': 'Cliente fecha pasada',
+            'delivery_date': yesterday.isoformat(),
+        })
+
+        self.assertTrue(today_form.is_valid(), today_form.errors)
+        self.assertFalse(past_form.is_valid())
+        self.assertIn('La fecha de entrega no puede ser anterior a hoy.', past_form.errors['delivery_date'])
+        self.assertEqual(
+            today_form.fields['delivery_date'].widget.attrs['min'],
+            today.isoformat(),
+        )
+
+    def test_order_management_requires_staff_and_saves_order_items_and_bom(self):
+        call_command('seed_bakery_products', verbosity=0)
+        material = Material.objects.create(name='Harina', stock=8, minimum_stock=2, unit='kg')
+        self.assertEqual(self.client.get('/pedidos/').status_code, 302)
+
+        self.client.force_login(self.customer)
+        self.assertEqual(self.client.get('/pedidos/').status_code, 302)
+
+        self.client.force_login(self.manager)
+        page = self.client.get('/pedidos/')
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'Administrar pedidos')
+        self.assertNotContains(page, 'id="nav-sidebar"')
+
+        response = self.client.post(
+            '/pedidos/',
+            {
+                'customer_name': 'Cliente pedido prueba',
+                'contact_phone': '555123',
+                'order_details': 'Torta de cumpleaños',
+                'delivery_date': '2026-11-20',
+                'delivery_time': '15:30',
+                'items-TOTAL_FORMS': '1',
+                'items-INITIAL_FORMS': '0',
+                'items-MIN_NUM_FORMS': '0',
+                'items-MAX_NUM_FORMS': '1000',
+                'items-0-product_option': str(BakeryProductOption.objects.get(name='Torta de chocolate').pk),
+                'items-0-product_name': '',
+                'items-0-quantity': '2',
+                'items-0-unit_price': '15000',
+                'items-0-notes': '',
+                'items-0-DELETE': '',
+                'bom-TOTAL_FORMS': '1',
+                'bom-INITIAL_FORMS': '0',
+                'bom-MIN_NUM_FORMS': '0',
+                'bom-MAX_NUM_FORMS': '1000',
+                'bom-0-material': str(material.pk),
+                'bom-0-quantity': '1.5',
+                'bom-0-notes': '',
+                'bom-0-DELETE': '',
+            },
+        )
+        self.assertRedirects(response, '/pedidos/')
+        order = BakeryOrder.objects.get(customer_name='Cliente pedido prueba')
+        self.assertEqual(order.total, Decimal('30000.00'))
+        self.assertEqual(order.items.get().product_name, 'Torta de chocolate')
+        self.assertEqual(order.items.get().product_option.name, 'Torta de chocolate')
+        self.assertEqual(order.order_details, '')
+        self.assertEqual(order.bom_items.get().material, material)
+        self.assertEqual(order.created_by, self.manager)
+
+    def test_custom_cake_selection_saves_custom_details_and_order_description(self):
+        call_command('seed_bakery_products', verbosity=0)
+        custom_option = BakeryProductOption.objects.get(is_customized=True)
+        self.client.force_login(self.manager)
+
+        response = self.client.post(
+            '/pedidos/',
+            {
+                'customer_name': 'Cliente torta personalizada',
+                'contact_phone': '',
+                'order_details': 'Diseño de dos pisos con flores azules',
+                'delivery_date': '',
+                'delivery_time': '',
+                'items-TOTAL_FORMS': '1',
+                'items-INITIAL_FORMS': '0',
+                'items-MIN_NUM_FORMS': '0',
+                'items-MAX_NUM_FORMS': '1000',
+                'items-0-product_option': str(custom_option.pk),
+                'items-0-product_name': 'Torta de cumpleaños',
+                'items-0-quantity': '1',
+                'items-0-unit_price': '25000',
+                'items-0-notes': 'Bizcocho de vainilla, relleno de frutilla',
+                'items-0-DELETE': '',
+                'bom-TOTAL_FORMS': '0',
+                'bom-INITIAL_FORMS': '0',
+                'bom-MIN_NUM_FORMS': '0',
+                'bom-MAX_NUM_FORMS': '1000',
+            },
+        )
+
+        self.assertRedirects(response, '/pedidos/')
+        order = BakeryOrder.objects.get(customer_name='Cliente torta personalizada')
+        item = order.items.get()
+        self.assertEqual(item.product_option, custom_option)
+        self.assertEqual(item.product_name, 'Torta de cumpleaños')
+        self.assertEqual(item.notes, 'Bizcocho de vainilla, relleno de frutilla')
+        self.assertEqual(order.order_details, 'Diseño de dos pisos con flores azules')
+
+    def test_cake_product_seed_adds_ten_common_options_and_custom_option_idempotently(self):
+        call_command('seed_bakery_products', verbosity=0)
+        self.assertEqual(BakeryProductOption.objects.filter(is_customized=False).count(), 10)
+        self.assertEqual(BakeryProductOption.objects.filter(is_customized=True).count(), 1)
+        chocolate = BakeryProductOption.objects.get(name='Torta de chocolate')
+        customized = BakeryProductOption.objects.get(is_customized=True)
+        self.assertEqual(chocolate.default_price, Decimal('14990'))
+        self.assertIsNone(customized.default_price)
+
+        chocolate.default_price = Decimal('12000')
+        chocolate.save(update_fields=['default_price'])
+
+        call_command('seed_bakery_products', verbosity=0)
+
+        self.assertEqual(BakeryProductOption.objects.count(), 11)
+        chocolate.refresh_from_db()
+        self.assertEqual(chocolate.default_price, Decimal('12000'))
+
+    def test_order_form_shows_ten_common_cakes_and_hides_custom_fields_initially(self):
+        call_command('seed_bakery_products', verbosity=0)
+        self.client.force_login(self.manager)
+
+        response = self.client.get('/pedidos/')
+
+        self.assertEqual(response.status_code, 200)
+        for cake_name in BakeryProductOption.objects.filter(is_customized=False).values_list('name', flat=True):
+            self.assertContains(response, cake_name)
+        chocolate = BakeryProductOption.objects.get(name='Torta de chocolate')
+        self.assertEqual(response.context['cake_prices'][str(chocolate.pk)], '14990')
+        self.assertContains(response, 'Torta personalizada')
+        self.assertContains(response, 'Precio unitario (CLP, editable)')
+        self.assertContains(response, 'Puedes editarlo', html=False)
+        self.assertContains(response, 'id="order-description-section" hidden')
+        self.assertContains(response, 'data-custom-fields hidden')
+
+    def test_inventory_management_page_requires_staff_and_can_edit_stock(self):
+        material = Material.objects.create(
+            name='Harina',
+            stock=2,
+            minimum_stock=5,
+            unit='kg',
+        )
+        self.assertEqual(self.client.get('/inventario/').status_code, 302)
+
+        self.client.force_login(self.customer)
+        self.assertEqual(self.client.get('/inventario/').status_code, 302)
+
+        self.client.force_login(self.admin)
+        response = self.client.get('/inventario/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Inventario de insumos')
+        self.assertContains(response, 'Harina')
+        self.assertNotContains(response, 'id="nav-sidebar"')
+
+        response = self.client.post(
+            '/inventario/',
+            {
+                'material_id': material.pk,
+                'name': 'Harina',
+                'stock': '12.5',
+                'minimum_stock': '5',
+                'unit': 'kg',
+                'is_active': 'on',
+            },
+        )
+        self.assertRedirects(response, '/inventario/')
+        material.refresh_from_db()
+        self.assertEqual(material.stock, Decimal('12.50'))
+
+        response = self.client.post(
+            '/inventario/',
+            {
+                'material_id': material.pk,
+                'name': 'Harina',
+                'stock': '-1',
+                'minimum_stock': '5',
+                'unit': 'kg',
+                'is_active': 'on',
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('stock', response.context['form'].errors)
+        material.refresh_from_db()
+        self.assertEqual(material.stock, Decimal('12.50'))
 
     def test_only_superuser_can_open_documentation_session(self):
         self.authenticate(self.customer)
@@ -253,25 +589,91 @@ class PharmacyApiTests(TestCase):
         self.assertEqual(self.client.get('/api/docs/').status_code, 401)
         self.assertEqual(self.client.get('/api/schema/').status_code, 401)
 
-    def test_warehouse_manager_can_open_django_admin(self):
+    def test_warehouse_manager_cannot_open_django_admin(self):
         self.client.force_login(self.manager)
 
         response = self.client.get('/admin/')
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Administración')
+        self.assertEqual(response.status_code, 302)
 
-    def test_warehouse_manager_can_open_admin_user_management(self):
+    def test_warehouse_manager_cannot_open_admin_user_management(self):
         self.client.force_login(self.manager)
         add_page = self.client.get('/admin/auth/user/add/')
 
-        self.assertEqual(add_page.status_code, 200)
+        self.assertEqual(add_page.status_code, 302)
 
-    def test_products_page_has_a_stock_management_action(self):
-        response = self.client.get('/products/')
+    def test_staff_can_advance_order_stage_without_django_admin(self):
+        order = BakeryOrder.objects.create(
+            customer_name='Cliente etapa staff',
+            status=BakeryOrder.Status.RECEIVED,
+        )
+        self.client.force_login(self.manager)
 
-        self.assertContains(response, 'data-restock-supply')
-        self.assertContains(response, 'Modificar stock')
+        page = self.client.get('/pedidos/')
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'Avanzar')
+
+        response = self.client.post(
+            '/pedidos/',
+            {'action': 'status', 'order_id': order.pk, 'status': BakeryOrder.Status.IN_PREPARATION},
+        )
+
+        self.assertRedirects(response, '/pedidos/')
+        order.refresh_from_db()
+        self.assertEqual(order.status, BakeryOrder.Status.IN_PREPARATION)
+        self.assertEqual(self.client.get('/admin/').status_code, 302)
+
+    def test_inventory_page_provides_a_stock_management_action(self):
+        self.client.force_login(self.admin)
+        response = self.client.get('/inventario/')
+
+        self.assertContains(response, 'Agregar insumo')
+        self.assertContains(response, 'Existencias registradas')
+        self.assertContains(response, '<select name="unit"', html=False)
+        self.assertContains(response, 'Kilogramos (kg)')
+        self.assertContains(response, 'Unidades')
+
+    def test_inventory_page_rejects_units_outside_the_choices(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            '/inventario/',
+            {
+                'name': 'Unidad inválida',
+                'stock': '1',
+                'minimum_stock': '0',
+                'unit': 'tazas',
+                'is_active': 'on',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('unit', response.context['form'].errors)
+        self.assertFalse(Material.objects.filter(name='Unidad inválida').exists())
+
+    def test_material_management_is_not_registered_in_django_admin(self):
+        self.client.force_login(self.admin)
+
+        admin_index = self.client.get('/admin/')
+        self.assertEqual(admin_index.status_code, 200)
+        self.assertNotContains(admin_index, 'Materiales')
+        self.assertNotContains(admin_index, '/admin/academic/material/')
+        self.assertEqual(self.client.get('/admin/academic/material/').status_code, 404)
+
+    def test_seed_bakery_materials_is_idempotent_and_does_not_overwrite_stock(self):
+        call_command('seed_bakery_materials', verbosity=0)
+        flour = Material.objects.get(name='Harina de trigo')
+        self.assertEqual(flour.stock, Decimal('0.00'))
+        self.assertEqual(flour.unit, 'kg')
+
+        flour.stock = Decimal('12.5')
+        flour.save(update_fields=['stock'])
+        initial_count = Material.objects.count()
+
+        call_command('seed_bakery_materials', verbosity=0)
+
+        self.assertEqual(Material.objects.count(), initial_count)
+        flour.refresh_from_db()
+        self.assertEqual(flour.stock, Decimal('12.5'))
 
     def test_warehouse_manager_cannot_create_or_edit_catalog_items(self):
         self.authenticate(self.manager)
@@ -375,20 +777,19 @@ class PharmacyApiTests(TestCase):
         self.supply.refresh_from_db()
         self.assertEqual(self.supply.stock, 1)
 
-    def test_homepage_is_distinct_from_catalog(self):
+    def test_homepage_is_internal_dashboard_and_customer_catalog_redirects(self):
         home_response = self.client.get('/')
         catalog_response = self.client.get('/products/')
 
-        self.assertContains(home_response, 'Explora por categoría')
-        self.assertContains(catalog_response, 'Buscar en el catálogo')
-        self.assertNotEqual(home_response.content, catalog_response.content)
+        self.assertContains(home_response, 'Panel del taller')
+        self.assertRedirects(catalog_response, '/')
 
     @patch('academic.views.SupplyCategory.objects.annotate', side_effect=OperationalError('database unavailable'))
-    def test_homepage_still_renders_when_catalog_database_fails(self, _annotate):
+    def test_homepage_still_renders_when_legacy_catalog_database_fails(self, _annotate):
         response = self.client.get('/')
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'No se pudo conectar con el catálogo')
+        self.assertContains(response, 'Inventario aún no configurado')
 
     def test_public_registration_creates_customer_profile_not_manager(self):
         response = self.client.post(

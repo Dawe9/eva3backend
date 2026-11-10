@@ -218,7 +218,7 @@ class MaterialSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = __import__('academic.models', fromlist=['Material']).Material
-        fields = ['id', 'name', 'stock', 'unit', 'is_active']
+        fields = ['id', 'name', 'stock', 'minimum_stock', 'unit', 'is_active']
 
 
 class BOMItemSerializer(serializers.ModelSerializer):
@@ -234,9 +234,14 @@ class BOMItemSerializer(serializers.ModelSerializer):
 class BakeryOrderItemSerializer(serializers.ModelSerializer):
     """Línea de un pedido con la descripción del producto final."""
 
+    product_option_name = serializers.CharField(source='product_option.name', read_only=True, allow_null=True)
+
     class Meta:
         model = __import__('academic.models', fromlist=['BakeryOrderItem']).BakeryOrderItem
-        fields = ['id', 'product_name', 'quantity', 'unit_price', 'notes', 'subtotal']
+        fields = [
+            'id', 'product_option', 'product_option_name', 'product_name',
+            'quantity', 'unit_price', 'notes', 'subtotal',
+        ]
 
 
 class BakeryOrderSerializer(serializers.ModelSerializer):

@@ -12,6 +12,18 @@ class IsSuperUser(BasePermission):
         return bool(request.user and request.user.is_authenticated and request.user.is_superuser)
 
 
+class IsStaffUser(BasePermission):
+    """Permite operaciones internas a usuarios activos del personal."""
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and request.user.is_active
+            and request.user.is_staff
+        )
+
+
 class IsWarehouseManager(BasePermission):
     """Permite gestionar inventario y solicitudes al gestor de bodega."""
 

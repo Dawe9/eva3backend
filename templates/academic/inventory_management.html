@@ -1,0 +1,145 @@
+{% extends 'academic/base.html' %}
+{% block title %}Inventario de insumos | Dulce Arte{% endblock %}
+{% block content %}
+<style>
+    .inventory-page { --wine: #704336; --terracotta: #a9684c; --paper: #fffdfa; --ink: #392e28; --muted: #897a70; --line: #ece3da; min-height: calc(100vh - 180px); padding: 2rem 0 3rem; background: #f8f5f0; color: var(--ink); }
+    .inventory-shell { width: min(1180px, calc(100% - 36px)); margin: auto; }
+    .inventory-heading { display: flex; justify-content: space-between; align-items: end; gap: 1rem; margin-bottom: 1.4rem; }
+    .inventory-kicker { color: var(--terracotta); font-size: .67rem; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
+    .inventory-heading h1 { margin: .35rem 0 .25rem; color: var(--wine); font-size: clamp(2rem, 3vw, 2.7rem); }
+    .inventory-heading p { margin: 0; color: var(--muted); font-size: .82rem; }
+    .inventory-layout { display: grid; grid-template-columns: minmax(270px, .75fr) minmax(0, 1.6fr); align-items: start; gap: 1rem; }
+    .inventory-card { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); box-shadow: 0 4px 18px rgba(67,48,35,.035); }
+    .inventory-card-head { padding: 1rem 1.15rem; border-bottom: 1px solid var(--line); }
+    .inventory-card-head h2 { margin: 0; color: var(--wine); font-family: 'DM Sans', sans-serif; font-size: .95rem; font-weight: 700; }
+    .inventory-card-head p { margin: .25rem 0 0; color: var(--muted); font-size: .68rem; }
+    .material-form { display: grid; gap: .85rem; padding: 1.15rem; }
+    .material-form label { display: block; margin-bottom: .3rem; color: #665449; font-size: .69rem; font-weight: 700; }
+    .material-form .form-control { min-height: 42px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; }
+    .check-row { display: flex; align-items: center; gap: .5rem; }
+    .check-row label { margin: 0; }
+    .field-error { margin: .25rem 0 0; color: #a43f37; font-size: .68rem; }
+    .form-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+    .form-actions .btn { font-size: .76rem; }
+    .inventory-table-tools { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .8rem 1rem; border-bottom: 1px solid var(--line); }
+    .inventory-table-tools input { max-width: 290px; min-height: 38px; font-size: .75rem; }
+    .inventory-total { color: var(--muted); font-size: .68rem; white-space: nowrap; }
+    .table-responsive { min-height: 220px; }
+    .material-table { width: 100%; margin: 0; font-size: .75rem; }
+    .material-table th { padding: .75rem .85rem; background: #f6f0e9; color: #705d50; font-size: .64rem; font-weight: 700; white-space: nowrap; }
+    .material-table td { padding: .75rem .85rem; color: #59483d; vertical-align: middle; }
+    .material-table tbody tr:last-child td { border-bottom: 0; }
+    .stock-badge { display: inline-block; padding: .3rem .48rem; border-radius: 7px; background: #edf2e8; color: #637653; font-size: .68rem; font-weight: 700; white-space: nowrap; }
+    .stock-badge.low { background: #f8e9e4; color: #a34f42; }
+    .status-badge { color: #637653; font-size: .67rem; font-weight: 700; }
+    .status-badge.inactive { color: #8c7564; }
+    .edit-link { color: var(--terracotta); font-size: .68rem; font-weight: 700; text-decoration: none; }
+    .edit-link:hover { color: var(--wine); text-decoration: underline; }
+    .empty-inventory { padding: 2.2rem 1rem; color: var(--muted); text-align: center; font-size: .75rem; }
+    .empty-inventory strong { display: block; margin-bottom: .35rem; color: #59483d; font-size: .86rem; }
+    .notice-list { margin-bottom: 1rem; }
+    .notice-list .alert { margin-bottom: .45rem; font-size: .76rem; }
+    @media (max-width: 850px) { .inventory-layout { grid-template-columns: 1fr; } }
+    @media (max-width: 560px) { .inventory-page { padding-top: 1.35rem; } .inventory-heading { align-items: flex-start; flex-direction: column; } .inventory-heading .btn { width: 100%; } .inventory-table-tools { align-items: flex-start; flex-direction: column; } .inventory-table-tools input { max-width: none; width: 100%; } .form-grid { grid-template-columns: 1fr; } }
+</style>
+
+<div class="inventory-page">
+    <div class="inventory-shell">
+        <header class="inventory-heading">
+            <div>
+                <span class="inventory-kicker">Dulce Arte · Bodega</span>
+                <h1>Inventario de insumos</h1>
+                <p>Consulta existencias, niveles mínimos y actualiza cantidades sin salir del panel.</p>
+            </div>
+            <a class="btn btn-outline-success" href="{% url 'home' %}">← Volver al panel</a>
+        </header>
+
+        {% if messages %}
+        <div class="notice-list" role="status">
+            {% for message in messages %}
+            <div class="alert alert-success">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <main class="inventory-layout">
+            <section class="inventory-card">
+                <header class="inventory-card-head">
+                    <h2>{% if editing_material %}Editar insumo{% else %}Agregar insumo{% endif %}</h2>
+                    <p>{% if editing_material %}Actualiza el stock real o el nivel mínimo de reposición.{% else %}Registra un ingrediente para usarlo en pedidos y listas BOM.{% endif %}</p>
+                </header>
+                <form method="post" class="material-form" novalidate>
+                    {% csrf_token %}
+                    {% if editing_material %}<input type="hidden" name="material_id" value="{{ editing_material.pk }}">{% endif %}
+                    <div>
+                        <label for="{{ form.name.id_for_label }}">Nombre del insumo</label>
+                        {{ form.name }}
+                        {% for error in form.name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                    </div>
+                    <div class="form-grid">
+                        <div>
+                            <label for="{{ form.stock.id_for_label }}">Stock actual</label>
+                            {{ form.stock }}
+                            {% for error in form.stock.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                        </div>
+                        <div>
+                            <label for="{{ form.unit.id_for_label }}">Unidad</label>
+                            {{ form.unit }}
+                            {% for error in form.unit.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                        </div>
+                    </div>
+                    <div>
+                        <label for="{{ form.minimum_stock.id_for_label }}">Avisar cuando llegue a</label>
+                        {{ form.minimum_stock }}
+                        {% for error in form.minimum_stock.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                    </div>
+                    <div class="check-row">{{ form.is_active }}<label for="{{ form.is_active.id_for_label }}">Insumo activo para producción</label></div>
+                    {% for error in form.non_field_errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                    <div class="form-actions">
+                        <button class="btn btn-success" type="submit">{% if editing_material %}Guardar cambios{% else %}Agregar insumo{% endif %}</button>
+                        {% if editing_material %}<a class="btn btn-outline-secondary" href="{% url 'inventory-management' %}">Cancelar edición</a>{% endif %}
+                    </div>
+                </form>
+            </section>
+
+            <section class="inventory-card">
+                <header class="inventory-card-head">
+                    <h2>Existencias registradas</h2>
+                    <p>Los niveles iguales o menores al mínimo se marcan para reposición.</p>
+                </header>
+                <div class="inventory-table-tools">
+                    <input class="form-control" id="material-search" type="search" placeholder="Buscar insumo..." aria-label="Buscar insumo">
+                    <span class="inventory-total">{{ materials|length }} insumo{{ materials|length|pluralize:"s" }}</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table material-table">
+                        <thead><tr><th>Insumo</th><th>Stock actual</th><th>Mínimo</th><th>Estado</th><th></th></tr></thead>
+                        <tbody id="material-rows">
+                            {% for material in materials %}
+                            <tr data-material-row>
+                                <td><strong>{{ material.name }}</strong><br><span class="text-secondary small">{{ material.unit }}</span></td>
+                                <td><span class="stock-badge {% if material.needs_restock %}low{% endif %}">{{ material.stock|floatformat:-2 }} {{ material.unit }}</span></td>
+                                <td>{{ material.minimum_stock|floatformat:-2 }} {{ material.unit }}</td>
+                                <td><span class="status-badge {% if not material.is_active %}inactive{% endif %}">{% if not material.is_active %}Inactivo{% elif material.needs_restock %}Reponer{% else %}Disponible{% endif %}</span></td>
+                                <td><a class="edit-link" href="{% url 'inventory-management' %}?edit={{ material.pk }}">Editar</a></td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5"><div class="empty-inventory"><strong>Aún no hay insumos</strong>Agrega ingredientes con su stock actual y unidad para comenzar.</div></td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+</div>
+<script>
+    document.querySelector('#material-search').addEventListener('input', event => {
+        const query = event.target.value.trim().toLocaleLowerCase();
+        document.querySelectorAll('[data-material-row]').forEach(row => {
+            row.hidden = !row.textContent.toLocaleLowerCase().includes(query);
+        });
+    });
+</script>
+{% endblock %}

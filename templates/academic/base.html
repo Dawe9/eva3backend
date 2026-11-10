@@ -85,20 +85,20 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        :root { --ink: #1b2924; --pine: #174b3f; --leaf: #3c775e; --lime: #d8e8a0; --paper: #f7f8f3; --line: #dfe5dd; --muted: #68756e; --coral: #c85e45; }
+        :root { --ink: #382720; --pine: #713e2d; --leaf: #a45d43; --lime: #f5dfc4; --paper: #fbf7f1; --line: #eadfd3; --muted: #81736a; --coral: #b65743; }
         body { background: var(--paper); color: var(--ink); min-height: 100vh; display: flex; flex-direction: column; font-family: 'DM Sans', sans-serif; }
         h1, h2, h3, .display-serif { font-family: 'DM Serif Display', Georgia, serif; font-weight: 400; }
         a { color: var(--pine); }
-        .announcement { background: var(--pine); color: #f5f8ef; font-size: .75rem; }
+        .announcement { background: var(--pine); color: #fffaf5; font-size: .75rem; }
         .announcement-inner { min-height: 34px; display: flex; align-items: center; justify-content: center; gap: .45rem; }
-        .announcement strong { color: var(--lime); font-weight: 600; }
+        .announcement strong { color: #f4d8b8; font-weight: 600; }
         .site-nav { background: #fff; border-bottom: 1px solid var(--line); }
         .nav-shell { min-height: 78px; }
         .brand-lockup { display: inline-flex; align-items: center; gap: .65rem; color: var(--pine); text-decoration: none; }
-        .brand-mark { width: 34px; height: 34px; display: grid; place-items: center; background: var(--lime); color: var(--pine); font-size: 1.35rem; font-weight: 700; }
+        .brand-mark { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 50%; background: var(--lime); color: var(--pine); font-family: 'DM Serif Display', Georgia, serif; font-size: 1.25rem; }
         .brand-name { display: block; font-size: .9rem; line-height: 1.05; font-weight: 700; }
         .brand-caption { display: block; margin-top: .2rem; color: var(--muted); font-size: .59rem; letter-spacing: .08em; }
-        .site-nav .nav-link { color: #42534b; font-size: .87rem; padding: .6rem .8rem; }
+        .site-nav .nav-link { color: #62534a; font-size: .87rem; padding: .6rem .8rem; }
         .site-nav .nav-link:hover, .site-nav .nav-link.active { color: var(--pine); }
         .nav-link-cart { display: inline-flex; align-items: center; gap: .5rem; }
         .nav-link-cart svg { width: 1rem; height: 1rem; stroke: currentColor; }
@@ -110,8 +110,10 @@
         .site-footer .container { color: var(--muted); }
         .form-control, .form-select { border-color: var(--line); border-radius: 2px; min-height: 44px; }
         .form-control:focus, .form-select:focus { border-color: var(--leaf); box-shadow: 0 0 0 .18rem rgba(60, 119, 94, .14); }
-        .btn-success { background: var(--pine); border-color: var(--pine); border-radius: 2px; }
-        .btn-success:hover, .btn-success:focus { background: #10392f; border-color: #10392f; }
+        .btn-success { background: var(--pine); border-color: var(--pine); border-radius: 999px; }
+        .btn-success:hover, .btn-success:focus { background: #563021; border-color: #563021; }
+        .btn-outline-success { color: var(--pine); border-color: #c8a58d; border-radius: 999px; }
+        .btn-outline-success:hover, .btn-outline-success:focus { background: var(--pine); border-color: var(--pine); }
         .table thead th { white-space: nowrap; }
         @media (max-width: 991.98px) {
             .nav-shell { min-height: 68px; }
@@ -122,20 +124,22 @@
 </head>
 <body>
     <div class="announcement">
-        <div class="container announcement-inner"><strong>ABASTECIMIENTO INSTITUCIONAL</strong><span>Catálogo de salud con trazabilidad por lote</span></div>
+        <div class="container announcement-inner"><strong>GESTIÓN INTERNA</strong><span>Coordinación de pedidos, bodega, cocina y despacho</span></div>
     </div>
     <nav class="site-nav navbar navbar-expand-lg">
         <div class="container nav-shell">
-            <a class="brand-lockup" href="/" aria-label="Botica Institucional, inicio">
-                <span class="brand-mark" aria-hidden="true">+</span>
-                <span><span class="brand-name">BOTICA</span><span class="brand-caption">INSTITUCIONAL</span></span>
+            <a class="brand-lockup" href="/" aria-label="Dulce Arte, panel de operaciones">
+                <span class="brand-mark" aria-hidden="true">D</span>
+                <span><span class="brand-name">Dulce Arte</span><span class="brand-caption">OPERACIONES · PASTELERÍA</span></span>
             </a>
             <button class="navbar-toggler nav-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#site-menu" aria-controls="site-menu" aria-expanded="false" aria-label="Abrir menú">Menú</button>
             <div class="collapse navbar-collapse" id="site-menu">
                 <div class="navbar-nav mx-auto">
-                    <a class="nav-link" href="/">Inicio</a>
-                    <a class="nav-link" href="/products/">Catálogo</a>
-                    <a class="nav-link nav-link-cart" href="/cart/" id="cart-nav-link">
+                    <a class="nav-link" href="/">Panel</a>
+                    <a class="nav-link" href="{% url 'order-management' %}">Producción</a>
+                    <a class="nav-link" href="{% url 'inventory-management' %}">Insumos</a>
+                    <a class="nav-link" href="/#despachos">Despachos</a>
+                    <a class="nav-link nav-link-cart d-none" href="/cart/" id="cart-nav-link" aria-hidden="true">
                         <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <circle cx="9" cy="19" r="1.5"></circle>
                             <circle cx="17" cy="19" r="1.5"></circle>
@@ -146,9 +150,9 @@
                     </a>
                 </div>
                 <div class="nav-utility">
-                    <a class="btn btn-outline-success d-none" href="/products/" id="warehouse-link">Modificar stock</a>
-                    <a class="btn btn-outline-success" href="/login/" id="login-link">Ingresar</a>
-                    <a class="btn btn-success" href="/register/" id="register-link">Crear cuenta</a>
+                    <a class="btn btn-outline-success" href="/gestor/" id="warehouse-link">Panel del taller</a>
+                    <a class="btn btn-outline-success" href="/login/" id="login-link">Acceso equipo</a>
+                    <a class="btn btn-success d-none" href="/register/" id="register-link" aria-hidden="true">Crear cuenta</a>
                     <span class="small text-success d-none" id="session-status">Sesión activa</span>
                     <button class="btn btn-outline-secondary d-none" id="logout-button" type="button">Salir</button>
                 </div>

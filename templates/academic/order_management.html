@@ -1,0 +1,338 @@
+{% extends 'academic/base.html' %}
+{% block title %}Pedidos de producción | Dulce Arte{% endblock %}
+{% block content %}
+<style>
+    .orders-page { --wine: #704336; --terracotta: #a9684c; --paper: #fffdfa; --ink: #392e28; --muted: #897a70; --line: #ece3da; min-height: calc(100vh - 180px); padding: 2rem 0 3rem; background: #f8f5f0; color: var(--ink); }
+    .orders-shell { width: min(1320px, calc(100% - 36px)); margin: auto; }
+    .orders-heading { display: flex; justify-content: space-between; align-items: end; gap: 1rem; margin-bottom: 1.4rem; }
+    .orders-kicker { color: var(--terracotta); font-size: .67rem; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
+    .orders-heading h1 { margin: .35rem 0 .25rem; color: var(--wine); font-size: clamp(2rem, 3vw, 2.7rem); }
+    .orders-heading p { margin: 0; color: var(--muted); font-size: .82rem; }
+    .orders-layout { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 1rem; }
+    .orders-card { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); box-shadow: 0 4px 18px rgba(67,48,35,.035); }
+    .orders-card-head { padding: 1rem 1.15rem; border-bottom: 1px solid var(--line); }
+    .orders-card-head h2 { margin: 0; color: var(--wine); font-family: 'DM Sans', sans-serif; font-size: .95rem; font-weight: 700; }
+    .orders-card-head p { margin: .25rem 0 0; color: var(--muted); font-size: .68rem; }
+    .order-form { display: grid; gap: 1rem; padding: 1.15rem; }
+    .order-form label { display: block; margin-bottom: .3rem; color: #665449; font-size: .69rem; font-weight: 700; }
+    .order-form .form-control, .order-form .form-select { min-height: 40px; font-size: .77rem; }
+    .order-form textarea.form-control { min-height: 78px; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
+    .form-grid.contact-grid { grid-template-columns: 1.3fr 1fr; }
+    .form-grid.delivery-grid { grid-template-columns: 1fr 1fr 1fr; }
+    .field-error { margin: .25rem 0 0; color: #a43f37; font-size: .68rem; }
+    .form-stepper { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .55rem; padding: 1rem 1.15rem; border-bottom: 1px solid var(--line); background: #fcfaf6; }
+    .form-stepper a { display: flex; align-items: center; gap: .5rem; min-width: 0; color: #76665b; font-size: .7rem; font-weight: 700; text-decoration: none; }
+    .form-stepper a:hover { color: var(--terracotta); }
+    .step-number { display: grid; place-items: center; flex: 0 0 25px; width: 25px; height: 25px; border: 1px solid #e7d8c8; border-radius: 50%; background: #fffdfa; color: var(--terracotta); font-size: .66rem; }
+    .order-form-section { padding: 1rem; border: 1px solid var(--line); border-radius: 11px; background: #fff; scroll-margin-top: 1rem; }
+    .order-form-section h3 { margin: 0; color: var(--wine); font-size: .88rem; font-weight: 700; }
+    .section-number { margin-right: .4rem; color: var(--terracotta); font-size: .7rem; }
+    .order-form-section > p { margin: .3rem 0 .85rem; color: var(--muted); font-size: .69rem; }
+    .line-head, .inline-row { display: grid; grid-template-columns: minmax(260px,1.5fr) minmax(85px,.55fr) minmax(120px,.7fr) 72px; align-items: center; gap: .55rem; }
+    .line-head { padding: .45rem .55rem; color: #76665b; font-size: .64rem; font-weight: 700; }
+    .inline-row { padding: .55rem; border-top: 1px solid #f1ebe4; }
+    .custom-product-fields { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; padding: .7rem; border-radius: 8px; background: #fcfaf6; }
+    .custom-product-fields[hidden], #order-description-section[hidden] { display: none; }
+    .bom-head, .bom-row { display: grid; grid-template-columns: minmax(200px,1.3fr) minmax(100px,.55fr) minmax(180px,1fr) 72px; align-items: center; gap: .55rem; }
+    .bom-head { padding: .45rem .55rem; color: #76665b; font-size: .64rem; font-weight: 700; }
+    .bom-row { padding: .55rem; border-top: 1px solid #f1ebe4; }
+    .inline-row .form-control, .bom-row .form-control, .bom-row .form-select { padding: .5rem; font-size: .72rem; }
+    .inline-row input[type="checkbox"], .bom-row input[type="checkbox"] { margin-right: .25rem; }
+    .delete-row-label { color: #a34f42; font-size: .62rem; }
+    .add-row { margin: .55rem 0 0 .55rem; padding: .25rem 0; border: 0; background: none; color: var(--terracotta); font-size: .7rem; font-weight: 700; }
+    .internal-note { display: flex; align-items: flex-start; gap: .5rem; margin-top: .75rem; padding: .65rem .75rem; border-radius: 8px; background: #f7f3ed; color: #76665b; font-size: .67rem; line-height: 1.5; }
+    .form-actions { position: sticky; bottom: .75rem; z-index: 3; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .5rem; padding: .75rem; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,253,250,.96); box-shadow: 0 5px 20px rgba(67,48,35,.09); backdrop-filter: blur(8px); }
+    .form-actions .btn { min-height: 42px; padding: .6rem 1rem; font-size: .78rem; }
+    .orders-tools { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .8rem 1rem; border-bottom: 1px solid var(--line); }
+    .orders-tools input, .orders-tools select { max-width: 250px; min-height: 38px; font-size: .73rem; }
+    .orders-count { color: var(--muted); font-size: .68rem; white-space: nowrap; }
+    .order-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: .65rem; padding: .8rem; }
+    .order-item { padding: .85rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+    .order-item[hidden] { display: none; }
+    .order-item-top { display: flex; justify-content: space-between; align-items: start; gap: .6rem; }
+    .order-id { color: var(--terracotta); font-size: .65rem; font-weight: 700; }
+    .order-item h3 { margin: .15rem 0; color: var(--wine); font-size: .86rem; font-weight: 700; }
+    .order-meta { color: var(--muted); font-size: .66rem; }
+    .order-description { margin: .55rem 0; color: #665449; font-size: .7rem; white-space: pre-line; }
+    .order-detail-line { padding-top: .3rem; color: #665449; font-size: .66rem; }
+    .order-detail-line span { color: var(--muted); }
+    .status-chip { display: inline-block; padding: .3rem .5rem; border-radius: 7px; background: #edf2e8; color: #637653; font-size: .64rem; font-weight: 700; white-space: nowrap; }
+    .order-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .65rem; padding-top: .6rem; border-top: 1px solid #f1ebe4; }
+    .order-actions .btn, .order-actions select { min-height: 34px; font-size: .66rem; }
+    .order-actions select { width: auto; max-width: 205px; }
+    .order-actions form { display: flex; align-items: center; gap: .35rem; }
+    .empty-orders { padding: 2rem 1rem; color: var(--muted); text-align: center; font-size: .75rem; }
+    .empty-orders strong { display: block; margin-bottom: .3rem; color: #59483d; font-size: .86rem; }
+    .notice-list { margin-bottom: 1rem; }
+    .notice-list .alert { margin-bottom: .45rem; font-size: .76rem; }
+    @media (max-width: 760px) { .form-stepper { grid-template-columns: repeat(2, minmax(0, 1fr)); } .order-list { grid-template-columns: 1fr; } .line-head, .inline-row { grid-template-columns: minmax(180px,1.5fr) minmax(64px,.55fr) minmax(95px,.75fr) 52px; } .bom-head, .bom-row { grid-template-columns: minmax(0,1fr) minmax(75px,.5fr) 52px; } .bom-head > :nth-child(3), .bom-row > :nth-child(3) { grid-column: 1 / 3; } }
+    @media (max-width: 560px) { .orders-page { padding-top: 1.35rem; } .orders-heading { align-items: flex-start; flex-direction: column; } .orders-heading .btn { width: 100%; } .orders-tools { align-items: stretch; flex-direction: column; } .orders-tools input, .orders-tools select { max-width: none; width: 100%; } .form-grid, .form-grid.contact-grid, .form-grid.delivery-grid, .custom-product-fields { grid-template-columns: 1fr; } .form-stepper { gap: .35rem; padding: .75rem; } .form-stepper a { font-size: .62rem; } .orders-shell { width: min(100% - 24px, 1320px); } .order-item-top { flex-direction: column; } .form-actions { bottom: .35rem; } }
+</style>
+
+<div class="orders-page">
+    <div class="orders-shell">
+        <header class="orders-heading">
+            <div>
+                <span class="orders-kicker">Dulce Arte · Producción</span>
+                <h1>Administrar pedidos</h1>
+                <p>Captura cada pedido en el orden de trabajo: cliente, productos personalizados, entrega y producción.</p>
+            </div>
+            <a class="btn btn-outline-success" href="{% url 'home' %}">← Volver al panel</a>
+        </header>
+
+        {% if messages %}
+        <div class="notice-list" role="status">
+            {% for message in messages %}
+            <div class="alert {% if 'error' in message.tags %}alert-danger{% else %}alert-success{% endif %}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <main class="orders-layout">
+            <section class="orders-card">
+                <header class="orders-card-head">
+                    <h2>{% if editing_order %}Editar pedido #{{ editing_order.pk }}{% else %}Nuevo pedido personalizado{% endif %}</h2>
+                    <p>Ingresa primero los datos acordados con el cliente; al final agrega los requerimientos internos de cocina.</p>
+                </header>
+                <nav class="form-stepper" aria-label="Secciones del formulario">
+                    <a href="#customer-section"><span class="step-number">1</span><span>Cliente</span></a>
+                    <a href="#products-section"><span class="step-number">2</span><span>Productos y diseño</span></a>
+                    <a href="#delivery-section"><span class="step-number">3</span><span>Entrega</span></a>
+                    <a href="#production-section"><span class="step-number">4</span><span>Producción</span></a>
+                </nav>
+                <form method="post" class="order-form" novalidate>
+                    {% csrf_token %}
+                    {% if editing_order %}<input type="hidden" name="order_id" value="{{ editing_order.pk }}">{% endif %}
+                    <section class="order-form-section" id="customer-section">
+                        <h3><span class="section-number">01</span>Datos del cliente</h3>
+                        <p>Registra a quién pertenece el pedido y cómo contactarle si hay cambios.</p>
+                        <div class="form-grid contact-grid">
+                            <div>
+                                <label for="{{ form.customer_name.id_for_label }}">Nombre del cliente</label>{{ form.customer_name }}
+                                {% for error in form.customer_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                            </div>
+                            <div>
+                                <label for="{{ form.contact_phone.id_for_label }}">Teléfono de contacto</label>{{ form.contact_phone }}
+                                {% for error in form.contact_phone.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="order-form-section" id="products-section">
+                        <h3><span class="section-number">02</span>Productos y diseño</h3>
+                        <p>Describe el producto acordado, su cantidad, precio y detalles de personalización.</p>
+                        {{ item_formset.management_form }}
+                        <div class="line-head" aria-hidden="true"><span>Tipo de torta</span><span>Cantidad</span><span>Precio unitario (CLP, editable)</span><span></span></div>
+                        <div id="item-forms">
+                            {% for item_form in item_formset %}
+                            <div class="inline-row" data-product-row>
+                                {% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
+                                <div>{{ item_form.product_option }}{% for error in item_form.product_option.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+                                <div>{{ item_form.quantity }}{% for error in item_form.quantity.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+                                <div>{{ item_form.unit_price }}{% for error in item_form.unit_price.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+                                <div>{% if item_formset.can_delete %}<label class="delete-row-label">{{ item_form.DELETE }} Quitar</label>{% endif %}</div>
+                                <div class="custom-product-fields" data-custom-fields hidden>
+                                    <div><label for="{{ item_form.product_name.id_for_label }}">Nombre de la torta personalizada</label>{{ item_form.product_name }}{% for error in item_form.product_name.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+                                    <div><label for="{{ item_form.notes.id_for_label }}">Detalles de personalización</label>{{ item_form.notes }}{% for error in item_form.notes.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+                                </div>
+                                {% for error in item_form.non_field_errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <button class="add-row" type="button" data-add-form="item-forms" data-prefix="items">＋ Agregar otro producto</button>
+                        <template id="items-empty-form">
+                            <div class="inline-row" data-product-row>
+                                {% for hidden in item_formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                                <div>{{ item_formset.empty_form.product_option }}</div>
+                                <div>{{ item_formset.empty_form.quantity }}</div>
+                                <div>{{ item_formset.empty_form.unit_price }}</div>
+                                <div><label class="delete-row-label">{{ item_formset.empty_form.DELETE }} Quitar</label></div>
+                                <div class="custom-product-fields" data-custom-fields hidden>
+                                    <div><label for="{{ item_formset.empty_form.product_name.id_for_label }}">Nombre de la torta personalizada</label>{{ item_formset.empty_form.product_name }}</div>
+                                    <div><label for="{{ item_formset.empty_form.notes.id_for_label }}">Detalles de personalización</label>{{ item_formset.empty_form.notes }}</div>
+                                </div>
+                            </div>
+                        </template>
+                        <div id="order-description-section" hidden>
+                            <label for="{{ form.order_details.id_for_label }}">Descripción general del diseño o indicaciones del cliente</label>
+                            {{ form.order_details }}
+                            {% for error in form.order_details.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                        </div>
+                        <div class="internal-note">Al elegir una torta común se propone un precio para una torta estándar de aproximadamente 15 porciones. Puedes editarlo según tamaño, decoración y lo acordado con el cliente.</div>
+                    </section>
+
+                    <section class="order-form-section" id="delivery-section">
+                        <h3><span class="section-number">03</span>Programación de entrega</h3>
+                        <p>Confirma la fecha y hora comprometidas para coordinar la producción y el retiro.</p>
+                        <div class="form-grid delivery-grid">
+                        <div>
+                            <label for="{{ form.delivery_date.id_for_label }}">Fecha de entrega</label>{{ form.delivery_date }}
+                            {% for error in form.delivery_date.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                        </div>
+                        <div>
+                            <label for="{{ form.delivery_time.id_for_label }}">Hora de entrega</label>{{ form.delivery_time }}
+                            {% for error in form.delivery_time.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                        </div>
+                        <div>
+                            <label>Modalidad</label>
+                            <div class="internal-note" style="margin-top:0">Entrega / retiro según coordinación interna del pedido.</div>
+                        </div>
+                        </div>
+                    </section>
+
+                    <section class="order-form-section" id="production-section">
+                        <h3><span class="section-number">04</span>Insumos para producción</h3>
+                        <p>Uso interno de cocina: selecciona ingredientes del inventario y especifica la cantidad requerida.</p>
+                        {{ bom_formset.management_form }}
+                        <div class="bom-head" aria-hidden="true"><span>Ingrediente</span><span>Cantidad necesaria</span><span>Indicaciones para cocina</span><span></span></div>
+                        <div id="bom-forms">
+                            {% for bom_form in bom_formset %}
+                            <div class="bom-row">
+                                {% for hidden in bom_form.hidden_fields %}{{ hidden }}{% endfor %}
+                                <div>{{ bom_form.material }}{% for error in bom_form.material.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+                                <div>{{ bom_form.quantity }}{% for error in bom_form.quantity.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+                                <div>{{ bom_form.notes }}{% for error in bom_form.notes.errors %}<p class="field-error">{{ error }}</p>{% endfor %}</div>
+                                <div><label class="delete-row-label">{{ bom_form.DELETE }} Quitar</label></div>
+                                {% for error in bom_form.non_field_errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <button class="add-row" type="button" data-add-form="bom-forms" data-prefix="bom">＋ Agregar otro ingrediente</button>
+                        <template id="bom-empty-form">
+                            <div class="bom-row">
+                                {% for hidden in bom_formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+                                <div>{{ bom_formset.empty_form.material }}</div>
+                                <div>{{ bom_formset.empty_form.quantity }}</div>
+                                <div>{{ bom_formset.empty_form.notes }}</div>
+                                <div><label class="delete-row-label">{{ bom_formset.empty_form.DELETE }} Quitar</label></div>
+                            </div>
+                        </template>
+                        <div class="internal-note"><span aria-hidden="true">ⓘ</span><span>El stock se descuenta cuando el pedido avanza a «Listo». Verifica las cantidades antes de confirmar.</span></div>
+                    </section>
+
+                    {% for error in form.non_field_errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                    <div class="form-actions">
+                        <button class="btn btn-success" type="submit">{% if editing_order %}Guardar cambios{% else %}Crear pedido{% endif %}</button>
+                        {% if editing_order %}<a class="btn btn-outline-secondary" href="{% url 'order-management' %}">Cancelar edición</a>{% endif %}
+                    </div>
+                </form>
+            </section>
+
+            <section class="orders-card">
+                <header class="orders-card-head">
+                    <h2>Pedidos registrados</h2>
+                    <p>Busca por cliente o filtra por etapa de producción.</p>
+                </header>
+                <div class="orders-tools">
+                    <input class="form-control" id="order-search" type="search" placeholder="Buscar cliente o pedido..." aria-label="Buscar pedido">
+                    <select class="form-select" id="status-filter" aria-label="Filtrar por estado">
+                        <option value="">Todas las etapas</option>
+                        {% for value, label in status_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                    </select>
+                    <span class="orders-count">{{ orders|length }} pedido{{ orders|length|pluralize:"s" }}</span>
+                </div>
+                <div class="order-list" id="order-list">
+                    {% for order in orders %}
+                    <article class="order-item" data-order-card data-status="{{ order.status }}">
+                        <div class="order-item-top">
+                            <div>
+                                <span class="order-id">#DA-{{ order.pk }}</span>
+                                <h3>{{ order.customer_name }}</h3>
+                                <div class="order-meta">{% if order.delivery_date %}Entrega {{ order.delivery_date|date:"d/m/Y" }}{% else %}Fecha pendiente{% endif %}{% if order.delivery_time %} · {{ order.delivery_time|time:"H:i" }}{% endif %}{% if order.contact_phone %} · {{ order.contact_phone }}{% endif %}</div>
+                            </div>
+                            <span class="status-chip">{{ order.get_status_display }}</span>
+                        </div>
+                        {% if order.order_details %}<p class="order-description">{{ order.order_details|truncatechars:180 }}</p>{% endif %}
+                        {% for item in order.items.all %}
+                        <div class="order-detail-line">{{ item.quantity }} × {{ item.product_name }} <span>· ${{ item.unit_price|floatformat:0 }}</span>{% if item.notes %} <span>· {{ item.notes }}</span>{% endif %}</div>
+                        {% endfor %}
+                        {% if order.bom_items.all %}
+                        <div class="order-detail-line"><span>Ingredientes:</span> {% for bom in order.bom_items.all %}{{ bom.material.name }} {{ bom.quantity|floatformat:-2 }} {{ bom.material.unit }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>
+                        {% endif %}
+                        <div class="order-actions">
+                            <strong class="small">Total: ${{ order.total|floatformat:0 }}</strong>
+                            <a class="btn btn-outline-success btn-sm" href="{% url 'order-management' %}?edit={{ order.pk }}">Editar pedido</a>
+                            {% if request.user.is_staff and order.next_status_choices %}
+                            <form method="post">
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="status">
+                                <input type="hidden" name="order_id" value="{{ order.pk }}">
+                                <select class="form-select" name="status" aria-label="Siguiente etapa del pedido {{ order.pk }}">
+                                    {% for value, label in order.next_status_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                                </select>
+                                <button class="btn btn-success btn-sm" type="submit">Avanzar</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </article>
+                    {% empty %}
+                    <div class="empty-orders"><strong>Aún no hay pedidos</strong>Registra el primer pedido para organizar la producción.</div>
+                    {% endfor %}
+                </div>
+            </section>
+        </main>
+    </div>
+</div>
+{{ cake_prices|json_script:"cake-prices" }}
+<script>
+    const cakePrices = JSON.parse(document.getElementById('cake-prices').textContent);
+
+    document.querySelectorAll('[data-add-form]').forEach(button => {
+        button.addEventListener('click', () => {
+            const prefix = button.dataset.prefix;
+            const container = document.getElementById(button.dataset.addForm);
+            const template = document.getElementById(`${prefix}-empty-form`);
+            const totalForms = document.getElementById(`id_${prefix}-TOTAL_FORMS`);
+            const index = Number(totalForms.value);
+            container.insertAdjacentHTML('beforeend', template.innerHTML.replaceAll('__prefix__', index));
+            totalForms.value = index + 1;
+            initializeProductRows();
+        });
+    });
+
+    const customizedProductOptionId = '{{ custom_product_option_id|default_if_none:"" }}';
+    const descriptionSection = document.querySelector('#order-description-section');
+
+    function initializeProductRows() {
+        const rows = document.querySelectorAll('[data-product-row]');
+        let hasCustomizedProduct = false;
+        rows.forEach(row => {
+            const option = row.querySelector('.cake-option');
+            const customizedFields = row.querySelector('[data-custom-fields]');
+            const isCustomized = option && option.value === customizedProductOptionId;
+            if (customizedFields) customizedFields.hidden = !isCustomized;
+            if (isCustomized && !row.querySelector('[name$="-DELETE"]')?.checked) hasCustomizedProduct = true;
+        });
+        descriptionSection.hidden = !hasCustomizedProduct;
+        if (!hasCustomizedProduct) {
+            const description = descriptionSection.querySelector('textarea');
+            if (description) description.value = '';
+        }
+    }
+
+    document.addEventListener('change', event => {
+        if (event.target.matches('.cake-option')) {
+            const priceInput = event.target.closest('[data-product-row]').querySelector('[name$="-unit_price"]');
+            priceInput.value = cakePrices[event.target.value] || '';
+            initializeProductRows();
+        } else if (event.target.matches('[name$="-DELETE"]')) {
+            initializeProductRows();
+        }
+    });
+    initializeProductRows();
+
+    function filterOrders() {
+        const query = document.querySelector('#order-search').value.trim().toLocaleLowerCase();
+        const status = document.querySelector('#status-filter').value;
+        document.querySelectorAll('[data-order-card]').forEach(card => {
+            const matchesText = card.textContent.toLocaleLowerCase().includes(query);
+            const matchesStatus = !status || card.dataset.status === status;
+            card.hidden = !matchesText || !matchesStatus;
+        });
+    }
+
+    document.querySelector('#order-search').addEventListener('input', filterOrders);
+    document.querySelector('#status-filter').addEventListener('change', filterOrders);
+</script>
+{% endblock %}

@@ -7,6 +7,7 @@ from django.contrib.auth.models import User
 from .models import (
     Cart,
     CartItem,
+    BakeryProductOption,
     Institution,
     MedicalSupply,
     Profile,
@@ -14,6 +15,16 @@ from .models import (
     PurchaseRequestItem,
     SupplyCategory,
 )
+
+
+class SuperuserAdminSite(admin.AdminSite):
+    """Reserva la interfaz Django Admin exclusivamente para superusuarios."""
+
+    def has_permission(self, request):
+        return bool(request.user.is_active and request.user.is_superuser)
+
+
+superuser_admin_site = SuperuserAdminSite(name='admin')
 
 
 class ProfileInline(admin.StackedInline):
@@ -29,10 +40,7 @@ class ProfileInline(admin.StackedInline):
         return ('institution',)
 
 
-admin.site.unregister(User)
-
-
-@admin.register(User)
+@admin.register(User, site=superuser_admin_site)
 class PageUserAdmin(UserAdmin):
     """Reserva la promoción a staff/superuser al superadministrador."""
 
@@ -121,26 +129,34 @@ class WarehouseReadOnlyAdmin(admin.ModelAdmin):
         return request.user.is_active and request.user.is_staff
 
 
-@admin.register(Institution)
+@admin.register(BakeryProductOption, site=superuser_admin_site)
+class BakeryProductOptionAdmin(admin.ModelAdmin):
+    list_display = ('name', 'default_price', 'is_customized', 'is_active')
+    list_editable = ('default_price', 'is_active')
+    list_filter = ('is_customized', 'is_active')
+    search_fields = ('name',)
+
+
+@admin.register(Institution, site=superuser_admin_site)
 class InstitutionAdmin(admin.ModelAdmin):
     list_display = ('name', 'tax_id')
     search_fields = ('name', 'tax_id')
 
 
-@admin.register(Profile)
+@admin.register(Profile, site=superuser_admin_site)
 class ProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'role', 'institution')
     list_filter = ('role', 'institution')
     search_fields = ('user__username', 'institution__name')
 
 
-@admin.register(SupplyCategory)
+@admin.register(SupplyCategory, site=superuser_admin_site)
 class SupplyCategoryAdmin(WarehouseStaffAdmin):
     list_display = ('name',)
     search_fields = ('name',)
 
 
-@admin.register(MedicalSupply)
+@admin.register(MedicalSupply, site=superuser_admin_site)
 class MedicalSupplyAdmin(WarehouseStaffAdmin):
     list_display = (
         'commercial_name', 'active_ingredient', 'category', 'lot',
@@ -157,7 +173,7 @@ class PurchaseRequestItemInline(admin.TabularInline):
     readonly_fields = ('supply', 'supply_name', 'lot', 'quantity', 'unit_price')
 
 
-@admin.register(PurchaseRequest)
+@admin.register(PurchaseRequest, site=superuser_admin_site)
 class PurchaseRequestAdmin(WarehouseReadOnlyAdmin):
     list_display = ('id', 'institution', 'status', 'total', 'created_at')
     list_filter = ('status', 'institution', 'created_at')
@@ -165,14 +181,14 @@ class PurchaseRequestAdmin(WarehouseReadOnlyAdmin):
     inlines = [PurchaseRequestItemInline]
 
 
-@admin.register(Cart)
+@admin.register(Cart, site=superuser_admin_site)
 class CartAdmin(admin.ModelAdmin):
     list_display = ('user', 'updated_at')
     readonly_fields = ('user', 'updated_at')
     inlines = []
 
 
-@admin.register(CartItem)
+@admin.register(CartItem, site=superuser_admin_site)
 class CartItemAdmin(admin.ModelAdmin):
     list_display = ('cart', 'supply', 'quantity')
     list_select_related = ('cart', 'supply')

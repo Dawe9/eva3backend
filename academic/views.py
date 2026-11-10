@@ -1,13 +1,16 @@
 """Páginas HTML y API transaccional para la gestión de abastecimiento institucional."""
 
 from collections import defaultdict
+from decimal import Decimal
 import logging
 
+from django.contrib import messages
 from django.contrib.auth import login
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db import DatabaseError, transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, status
@@ -19,9 +22,11 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter, SearchFilter
 
 from .filters import MedicalSupplyFilter
+from .forms import BakeryOrderForm, BakeryOrderItemFormSet, BOMItemFormSet, MaterialForm
 from .models import (
     BakeryOrder,
     BakeryOrderItem,
+    BakeryProductOption,
     BOMItem,
     Cart,
     CartItem,
@@ -32,7 +37,7 @@ from .models import (
     PurchaseRequestItem,
     SupplyCategory,
 )
-from .permissions import IsMedicalInstitution, IsSuperUser, IsWarehouseManager
+from .permissions import IsMedicalInstitution, IsStaffUser, IsSuperUser, IsWarehouseManager
 from .serializers import (
     BakeryOrderSerializer,
     BakeryOrderStatusSerializer,
@@ -52,44 +57,65 @@ logger = logging.getLogger(__name__)
 
 
 def home(request):
-    """Muestra la portada del marketplace con categorías y productos destacados."""
-    try:
-        categories = list(SupplyCategory.objects.annotate(
-            available_count=Count(
-                'supplies',
-                filter=Q(supplies__is_active=True, supplies__stock__gt=0),
-            )
-        ).order_by('name'))
-        featured_supplies = list(
-            MedicalSupply.objects.filter(is_active=True, stock__gt=0, expiration_date__gte=timezone.localdate())
-            .select_related('category')
-            .order_by('commercial_name')[:4]
-        )
-        catalog_database_unavailable = False
-    except DatabaseError:
-        logger.exception('No se pudo cargar el catálogo para la página de inicio.')
-        categories = []
-        featured_supplies = []
-        catalog_database_unavailable = True
-    return render(
-        request,
-        'academic/home.html',
+    """Muestra el panel interno para coordinar pedidos, producción, inventario y despacho."""
+    orders = BakeryOrder.objects.prefetch_related('items').order_by('delivery_date', 'delivery_time', '-created_at')
+    stages = [
         {
-            'categories': categories,
-            'featured_supplies': featured_supplies,
-            'catalog_database_unavailable': catalog_database_unavailable,
+            'title': 'Recibido',
+            'statuses': [BakeryOrder.Status.RECEIVED],
         },
-    )
+        {
+            'title': 'En preparación',
+            'statuses': [BakeryOrder.Status.IN_PREPARATION],
+        },
+        {
+            'title': 'Horneado / Decorado',
+            'statuses': [BakeryOrder.Status.BAKED, BakeryOrder.Status.DECORATED],
+        },
+        {
+            'title': 'Control de calidad',
+            'statuses': [BakeryOrder.Status.QUALITY_CONTROL],
+        },
+        {
+            'title': 'Listo',
+            'statuses': [BakeryOrder.Status.READY],
+        },
+    ]
+    for stage in stages:
+        stage['orders'] = orders.filter(status__in=stage['statuses'])
+        stage['count'] = stage['orders'].count()
+
+    materials = Material.objects.filter(is_active=True).order_by('name')
+    low_stock_count = sum(1 for material in materials if material.needs_restock)
+    ready_orders = orders.filter(status=BakeryOrder.Status.READY)
+    context = {
+        'stages': stages,
+        'materials': materials,
+        'low_stock_count': low_stock_count,
+        'active_order_count': orders.exclude(status=BakeryOrder.Status.READY).count(),
+        'production_order_count': orders.filter(
+            status__in=[
+                BakeryOrder.Status.IN_PREPARATION,
+                BakeryOrder.Status.BAKED,
+                BakeryOrder.Status.DECORATED,
+                BakeryOrder.Status.QUALITY_CONTROL,
+            ]
+        ).count(),
+        'ready_order_count': ready_orders.count(),
+        'ready_orders': ready_orders,
+        'today': timezone.localdate(),
+    }
+    return render(request, 'academic/bakery_home.html', context)
 
 
 def products_page(request):
-    """Renderiza el catálogo que consume los endpoints públicos de insumos."""
-    return render(request, 'academic/products.html')
+    """Redirige la antigua vitrina de farmacia al panel interno de Dulce Arte."""
+    return redirect('home')
 
 
 def cart_page(request):
-    """Renderiza la interfaz del carro persistente del usuario autenticado."""
-    return render(request, 'academic/cart.html')
+    """Redirige el antiguo carro de farmacia al panel interno de Dulce Arte."""
+    return redirect('home')
 
 
 def login_page(request):
@@ -109,13 +135,161 @@ def favicon(request):
 
 
 def register_page(request):
-    """Renderiza el alta pública de una cuenta de institución médica."""
-    return render(request, 'academic/register.html')
+    """Deshabilita el antiguo registro público de clientes de farmacia."""
+    return redirect('home')
 
 
 def warehouse_dashboard_page(request):
-    """Mantiene el panel de gestión accesible para el rol de bodega."""
-    return render(request, 'academic/warehouse_dashboard.html')
+    """Entrega el mismo panel operativo de pastelería desde la ruta de administración."""
+    return render(request, 'academic/bakery_home.html')
+
+
+@login_required(login_url='/admin/login/')
+@user_passes_test(lambda user: user.is_active and user.is_staff, login_url='/admin/login/')
+def inventory_management_page(request):
+    """Administra insumos en una página enfocada, sin la navegación general de Django Admin."""
+    material_id = request.POST.get('material_id') if request.method == 'POST' else request.GET.get('edit')
+    material = get_object_or_404(Material, pk=material_id) if material_id else None
+    form = MaterialForm(request.POST or None, instance=material)
+
+    if request.method == 'POST' and form.is_valid():
+        saved_material = form.save()
+        messages.success(request, f'El insumo «{saved_material.name}» se guardó correctamente.')
+        return redirect('inventory-management')
+
+    materials = Material.objects.order_by('name')
+    return render(
+        request,
+        'academic/inventory_management.html',
+        {
+            'materials': materials,
+            'form': form,
+            'editing_material': material,
+        },
+    )
+
+
+def transition_bakery_order(order_id, target_status):
+    """Aplica una transición válida y descuenta la BOM atómicamente al completar producción."""
+    with transaction.atomic():
+        order = BakeryOrder.objects.select_for_update().get(pk=order_id)
+        allowed_transitions = {
+            BakeryOrder.Status.RECEIVED: {BakeryOrder.Status.IN_PREPARATION, BakeryOrder.Status.READY},
+            BakeryOrder.Status.IN_PREPARATION: {BakeryOrder.Status.BAKED, BakeryOrder.Status.QUALITY_CONTROL},
+            BakeryOrder.Status.BAKED: {BakeryOrder.Status.DECORATED, BakeryOrder.Status.QUALITY_CONTROL},
+            BakeryOrder.Status.DECORATED: {BakeryOrder.Status.QUALITY_CONTROL},
+            BakeryOrder.Status.QUALITY_CONTROL: {BakeryOrder.Status.READY},
+            BakeryOrder.Status.READY: set(),
+        }
+        if target_status not in allowed_transitions.get(order.status, set()):
+            raise ValidationError({'status': f'Transición no permitida: {order.status} -> {target_status}.'})
+
+        if target_status == BakeryOrder.Status.READY:
+            quantities = defaultdict(lambda: Decimal('0'))
+            for bom in order.bom_items.all():
+                quantities[bom.material_id] += bom.quantity
+
+            materials = {
+                material.pk: material
+                for material in Material.objects.select_for_update()
+                .filter(pk__in=quantities)
+                .order_by('pk')
+            }
+            for material_id, quantity in quantities.items():
+                material = materials[material_id]
+                if material.stock < quantity:
+                    raise ValidationError({'stock': f'No hay stock suficiente de {material.name}.'})
+            for material_id, quantity in quantities.items():
+                material = materials[material_id]
+                material.stock -= quantity
+                material.save(update_fields=['stock'])
+
+        order.status = target_status
+        order.save(update_fields=['status', 'updated_at'])
+    return order
+
+
+@login_required(login_url='/admin/login/')
+@user_passes_test(lambda user: user.is_active and user.is_staff, login_url='/admin/login/')
+def order_management_page(request):
+    """Gestiona pedidos y sus productos/BOM en una página separada del Django Admin."""
+    order_id = request.POST.get('order_id') if request.method == 'POST' else request.GET.get('edit')
+    order = get_object_or_404(BakeryOrder, pk=order_id) if order_id else None
+
+    if request.method == 'POST' and request.POST.get('action') == 'status':
+        try:
+            updated_order = transition_bakery_order(order.pk, request.POST.get('status'))
+        except ValidationError as error:
+            messages.error(request, str(error.detail))
+        else:
+            messages.success(request, f'Pedido #{updated_order.pk} actualizado a «{updated_order.get_status_display()}».')
+        return redirect('order-management')
+
+    form = BakeryOrderForm(request.POST or None, instance=order)
+    item_formset = BakeryOrderItemFormSet(request.POST or None, instance=order, prefix='items')
+    bom_formset = BOMItemFormSet(request.POST or None, instance=order, prefix='bom')
+    if request.method == 'POST':
+        if form.is_valid() and item_formset.is_valid() and bom_formset.is_valid():
+            with transaction.atomic():
+                saved_order = form.save(commit=False)
+                has_customized_item = any(
+                    item_form.cleaned_data.get('product_option')
+                    and item_form.cleaned_data['product_option'].is_customized
+                    for item_form in item_formset.forms
+                    if item_form.cleaned_data and not item_form.cleaned_data.get('DELETE', False)
+                )
+                if not has_customized_item:
+                    saved_order.order_details = ''
+                if saved_order.pk is None:
+                    saved_order.created_by = request.user
+                saved_order.save()
+                item_formset.instance = saved_order
+                bom_formset.instance = saved_order
+                item_formset.save()
+                bom_formset.save()
+                saved_order.total = sum(
+                    (item.unit_price * item.quantity for item in saved_order.items.all()),
+                    start=Decimal('0'),
+                )
+                saved_order.save(update_fields=['total', 'updated_at'])
+            messages.success(request, f'El pedido #{saved_order.pk} se guardó correctamente.')
+            return redirect('order-management')
+
+    orders = BakeryOrder.objects.prefetch_related('items', 'bom_items__material').order_by(
+        'delivery_date', 'delivery_time', '-created_at'
+    )
+    allowed_transitions = {
+        BakeryOrder.Status.RECEIVED: [BakeryOrder.Status.IN_PREPARATION, BakeryOrder.Status.READY],
+        BakeryOrder.Status.IN_PREPARATION: [BakeryOrder.Status.BAKED, BakeryOrder.Status.QUALITY_CONTROL],
+        BakeryOrder.Status.BAKED: [BakeryOrder.Status.DECORATED, BakeryOrder.Status.QUALITY_CONTROL],
+        BakeryOrder.Status.DECORATED: [BakeryOrder.Status.QUALITY_CONTROL],
+        BakeryOrder.Status.QUALITY_CONTROL: [BakeryOrder.Status.READY],
+        BakeryOrder.Status.READY: [],
+    }
+    for existing_order in orders:
+        next_statuses = allowed_transitions[existing_order.status]
+        existing_order.next_status_choices = [
+            choice for choice in BakeryOrder.Status.choices if choice[0] in next_statuses
+        ]
+    return render(
+        request,
+        'academic/order_management.html',
+        {
+            'orders': orders,
+            'form': form,
+            'item_formset': item_formset,
+            'bom_formset': bom_formset,
+            'editing_order': order,
+            'status_choices': BakeryOrder.Status.choices,
+            'custom_product_option_id': BakeryProductOption.objects.filter(
+                is_customized=True, is_active=True
+            ).values_list('pk', flat=True).first(),
+            'cake_prices': {
+                str(option.pk): str(option.default_price or '')
+                for option in BakeryProductOption.objects.filter(is_active=True)
+            },
+        },
+    )
 
 
 class InstitutionRegistrationView(APIView):
@@ -498,39 +672,14 @@ class BakeryOrderDetailView(generics.RetrieveUpdateAPIView):
 class BakeryOrderStatusView(APIView):
     """Mueve un pedido por las etapas del proceso productivo y descuenta inventario en la etapa final."""
 
-    permission_classes = [IsAuthenticated, IsSuperUser]
-
-    allowed_transitions = {
-        BakeryOrder.Status.RECEIVED: {BakeryOrder.Status.IN_PREPARATION, BakeryOrder.Status.READY},
-        BakeryOrder.Status.IN_PREPARATION: {BakeryOrder.Status.BAKED, BakeryOrder.Status.QUALITY_CONTROL},
-        BakeryOrder.Status.BAKED: {BakeryOrder.Status.DECORATED, BakeryOrder.Status.QUALITY_CONTROL},
-        BakeryOrder.Status.DECORATED: {BakeryOrder.Status.QUALITY_CONTROL},
-        BakeryOrder.Status.QUALITY_CONTROL: {BakeryOrder.Status.READY},
-        BakeryOrder.Status.READY: set(),
-    }
+    permission_classes = [IsAuthenticated, IsStaffUser]
 
     @extend_schema(request=BakeryOrderStatusSerializer, responses=BakeryOrderSerializer)
     def patch(self, request, pk):
         serializer = BakeryOrderStatusSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         target_status = serializer.validated_data['status']
-
-        with transaction.atomic():
-            order = generics.get_object_or_404(
-                BakeryOrder.objects.select_for_update().prefetch_related('bom_items__material'),
-                pk=pk,
-            )
-            if target_status not in self.allowed_transitions.get(order.status, set()):
-                raise ValidationError({'status': f'Transición no permitida: {order.status} -> {target_status}.'})
-            if target_status == BakeryOrder.Status.READY:
-                for bom in order.bom_items.select_related('material').all():
-                    material = bom.material
-                    if material.stock < bom.quantity:
-                        raise ValidationError({'stock': f'No hay stock suficiente de {material.name}.'})
-                    material.stock = material.stock - bom.quantity
-                    material.save(update_fields=['stock'])
-            order.status = target_status
-            order.save(update_fields=['status', 'updated_at'])
+        order = transition_bakery_order(pk, target_status)
 
         return Response(BakeryOrderSerializer(BakeryOrder.objects.prefetch_related('items', 'bom_items__material').get(pk=order.pk)).data)
 

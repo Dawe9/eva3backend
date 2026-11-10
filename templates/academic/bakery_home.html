@@ -1,0 +1,340 @@
+{% extends 'academic/base.html' %}
+{% block title %}Operaciones | Dulce Arte{% endblock %}
+{% block content %}
+<style>
+    .ops { --wine: #704336; --terracotta: #a9684c; --cream: #fbf7f1; --paper: #fffdfa; --ink: #392e28; --muted: #897a70; --line: #ece3da; --sage: #78866a; color: var(--ink); background: #f8f5f0; min-height: calc(100vh - 180px); }
+    .ops-shell { width: min(1440px, calc(100% - 48px)); margin: auto; }
+    .ops-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 1.5rem; padding: 2rem 0 1.2rem; }
+    .ops-eyebrow { color: var(--terracotta); font-size: .67rem; font-weight: 700; letter-spacing: .15em; text-transform: uppercase; }
+    .ops-top h1 { margin: .35rem 0 .25rem; color: var(--wine); font-size: clamp(2rem, 3vw, 2.7rem); }
+    .ops-top p { margin: 0; color: var(--muted); font-size: .83rem; }
+    .ops-actions { display: flex; align-items: center; gap: .55rem; }
+    .ops-actions .btn { padding: .65rem 1rem; font-size: .78rem; font-weight: 600; }
+    .date-chip { padding: .62rem .8rem; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); color: #67574c; font-size: .72rem; white-space: nowrap; }
+    .ops-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .85rem; }
+    .kpi-card { display: flex; justify-content: space-between; gap: .6rem; padding: 1.1rem 1.15rem; border: 1px solid var(--line); border-radius: 13px; background: var(--paper); box-shadow: 0 3px 12px rgba(67,48,35,.025); }
+    .kpi-label { color: var(--muted); font-size: .73rem; }
+    .kpi-value { display: block; margin-top: .35rem; color: var(--wine); font-family: 'DM Serif Display', Georgia, serif; font-size: 2rem; line-height: 1; }
+    .kpi-note { display: block; margin-top: .4rem; color: #8d7e74; font-size: .65rem; }
+    .kpi-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: #f4e9dc; color: var(--terracotta); font-size: 1rem; }
+    .ops-grid { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(300px, .82fr); gap: 1rem; padding: 1rem 0 2rem; }
+    .ops-panel { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); }
+    .panel-head { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: 1rem 1.15rem; border-bottom: 1px solid var(--line); }
+    .panel-head h2 { margin: 0; color: var(--wine); font-family: 'DM Sans', sans-serif; font-size: .93rem; font-weight: 700; }
+    .panel-head p { margin: .2rem 0 0; color: var(--muted); font-size: .68rem; }
+    .panel-link { border: 0; background: none; color: var(--terracotta); font-size: .7rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
+    .board-wrap { overflow-x: auto; padding: .9rem; }
+    .board { display: grid; grid-template-columns: repeat(5, minmax(180px, 1fr)); gap: .65rem; min-width: 990px; }
+    .board-column { min-height: 302px; padding: .65rem; border-radius: 10px; background: #f7f3ed; }
+    .column-head { display: flex; justify-content: space-between; align-items: center; gap: .4rem; margin-bottom: .65rem; color: #665449; font-size: .7rem; font-weight: 700; }
+    .column-title { display: flex; align-items: center; gap: .4rem; }
+    .column-dot { width: 7px; height: 7px; border-radius: 50%; background: #bb8b66; }
+    .board-column:nth-child(2) .column-dot { background: #d3a340; }
+    .board-column:nth-child(3) .column-dot { background: #bc7951; }
+    .board-column:nth-child(4) .column-dot { background: #818b68; }
+    .board-column:nth-child(5) .column-dot { background: #718b72; }
+    .column-count { display: grid; place-items: center; min-width: 21px; height: 21px; border-radius: 7px; background: #fffdfa; color: #87776b; font-size: .63rem; }
+    .order-card { margin-bottom: .55rem; padding: .72rem; border: 1px solid #eee5db; border-radius: 9px; background: white; box-shadow: 0 2px 6px rgba(67,48,35,.025); }
+    .order-card:last-child { margin-bottom: 0; }
+    .order-card-top { display: flex; justify-content: space-between; gap: .3rem; color: #a07d67; font-size: .59rem; font-weight: 700; }
+    .order-card h3 { margin: .38rem 0 .25rem; color: #49362d; font-family: 'DM Sans', sans-serif; font-size: .72rem; font-weight: 700; line-height: 1.4; }
+    .order-card p { margin: 0; color: var(--muted); font-size: .62rem; }
+    .order-meta { display: flex; justify-content: space-between; align-items: center; gap: .3rem; margin-top: .6rem; color: #8c7564; font-size: .59rem; }
+    .priority { padding: .2rem .35rem; border-radius: 5px; background: #fbefdf; color: #996421; font-size: .56rem; font-weight: 700; }
+    .priority.urgent { background: #f7e8e4; color: #a54f42; }
+    .side-stack { display: grid; align-content: start; gap: 1rem; }
+    .inventory-list { padding: .15rem 1.1rem .5rem; }
+    .empty-state { padding: 1rem .25rem; color: var(--muted); font-size: .68rem; line-height: 1.55; }
+    .empty-state strong { display: block; margin-bottom: .3rem; color: #5b4538; font-size: .74rem; }
+    .empty-state p { margin: 0 0 .75rem; }
+    .empty-state .btn { border-radius: 999px; }
+    .stock-row { display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: .4rem; padding: .52rem 0; border-bottom: 1px solid #f0e9e1; }
+    .stock-row:last-child { border-bottom: 0; }
+    .stock-name { display: block; color: #514238; font-size: .72rem; font-weight: 600; }
+    .stock-detail { display: block; margin-top: .12rem; color: var(--muted); font-size: .59rem; }
+    .stock-level { align-self: center; padding: .28rem .43rem; border-radius: 6px; background: #f8eee0; color: #976731; font-size: .62rem; font-weight: 700; white-space: nowrap; }
+    .stock-level.low { background: #f8e9e4; color: #a34f42; }
+    .stock-level.good { background: #edf2e8; color: #637653; }
+    .reorder-button { padding: .32rem .5rem; border: 1px solid #e8ded3; border-radius: 6px; background: #fffdfa; color: #80533f; font-size: .59rem; font-weight: 700; white-space: nowrap; }
+    .reorder-button:hover { border-color: #b98569; background: #fbf3eb; }
+    .inventory-footer { display: flex; justify-content: space-between; align-items: center; gap: .7rem; padding: .65rem 1.1rem; border-top: 1px solid var(--line); color: #8a796c; font-size: .63rem; }
+    .inventory-footer a { color: var(--terracotta); font-weight: 700; text-decoration: none; white-space: nowrap; }
+    .dispatch-list { padding: .25rem 1.1rem .8rem; }
+    .dispatch-row { display: grid; grid-template-columns: 31px minmax(0,1fr) auto; align-items: center; gap: .6rem; padding: .7rem 0; border-bottom: 1px solid #f0e9e1; }
+    .dispatch-row:last-child { border-bottom: 0; }
+    .dispatch-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: #f2e9df; color: var(--terracotta); font-size: .75rem; }
+    .dispatch-name { display: block; color: #514238; font-size: .68rem; font-weight: 700; }
+    .dispatch-note { display: block; margin-top: .16rem; color: var(--muted); font-size: .6rem; }
+    .dispatch-status { padding: .23rem .38rem; border-radius: 5px; background: #edf2e8; color: #637653; font-size: .57rem; font-weight: 700; white-space: nowrap; }
+    .dashboard-note { display: flex; gap: .5rem; align-items: flex-start; margin: 0 0 1.5rem; padding: .75rem .9rem; border: 1px solid #e8dfd3; border-radius: 9px; background: #f4eee5; color: #716255; font-size: .68rem; line-height: 1.5; }
+    .dashboard-note strong { color: var(--wine); }
+    .modal-content { border: 1px solid var(--line); border-radius: 14px; }
+    .modal-header { border-color: var(--line); }
+    .modal-title { color: var(--wine); font-family: 'DM Serif Display', Georgia, serif; }
+    .modal-body label { margin-bottom: .3rem; color: #665449; font-size: .7rem; font-weight: 700; }
+    .bom-choices { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: .5rem; }
+    .bom-option { display: grid; grid-template-columns: auto minmax(0,1fr) 68px; align-items: center; gap: .45rem; padding: .5rem; border: 1px solid var(--line); border-radius: 8px; color: #59483d; font-size: .67rem; cursor: pointer; }
+    .bom-option input[type="checkbox"] { accent-color: var(--terracotta); }
+    .bom-option input[type="number"] { min-width: 0; min-height: 32px; padding: .25rem; font-size: .66rem; }
+    .proof-button { padding: .3rem .45rem; border: 1px solid #e8ded3; border-radius: 6px; background: #fffdfa; color: #715344; font-size: .57rem; font-weight: 700; white-space: nowrap; }
+    .proof-button:hover { border-color: #b98569; background: #fbf3eb; }
+    .signature-canvas { width: 100%; height: 150px; border: 1px dashed #cdb9a8; border-radius: 8px; background: #fffdfa; touch-action: none; }
+    .signature-help { color: var(--muted); font-size: .65rem; }
+    @media (max-width: 1050px) { .ops-grid { grid-template-columns: 1fr; } .side-stack { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    @media (max-width: 700px) { .ops-shell { width: min(100% - 28px, 1440px); } .ops-top { align-items: flex-start; flex-direction: column; padding-top: 1.5rem; } .ops-actions { flex-wrap: wrap; } .ops-kpis { grid-template-columns: repeat(2, minmax(0,1fr)); } .kpi-card { padding: .85rem; } .kpi-value { font-size: 1.7rem; } .side-stack { grid-template-columns: 1fr; } }
+</style>
+
+<div class="ops">
+    <div class="ops-shell">
+        <header class="ops-top">
+            <div>
+                <span class="ops-eyebrow">Dulce Arte · Operaciones</span>
+                <h1>Panel del taller</h1>
+                <p>Coordina pedidos personalizados, disponibilidad de insumos y tiempos de cocina desde un solo lugar.</p>
+            </div>
+            <div class="ops-actions">
+                <span class="date-chip">{{ today|date:"d/m/Y" }}</span>
+                <a class="btn btn-success" href="{% url 'order-management' %}">＋ Nuevo pedido</a>
+            </div>
+        </header>
+
+        <section class="ops-kpis" aria-label="Resumen de operaciones">
+            <article class="kpi-card"><div><span class="kpi-label">Pedidos activos</span><strong class="kpi-value">{{ active_order_count }}</strong><span class="kpi-note">Pedidos aún en producción</span></div><span class="kpi-icon">▤</span></article>
+            <article class="kpi-card"><div><span class="kpi-label">En producción</span><strong class="kpi-value">{{ production_order_count }}</strong><span class="kpi-note">Preparación, horno y control</span></div><span class="kpi-icon">♨</span></article>
+            <article class="kpi-card"><div><span class="kpi-label">Listos para entregar</span><strong class="kpi-value">{{ ready_order_count }}</strong><span class="kpi-note">Pedidos en etapa Listo</span></div><span class="kpi-icon">✓</span></article>
+            <article class="kpi-card"><div><span class="kpi-label">Insumos por reponer</span><strong class="kpi-value">{{ low_stock_count }}</strong><span class="kpi-note">Stock igual o menor al mínimo</span></div><span class="kpi-icon">♧</span></article>
+        </section>
+
+        <main class="ops-grid">
+            <section class="ops-panel" id="pedidos">
+                <header class="panel-head"><div><h2>Flujo de producción</h2><p>Pedidos personalizados organizados por etapa</p></div><a class="panel-link" href="{% url 'order-management' %}">Administrar pedidos →</a></header>
+                <div class="board-wrap">
+                    <div class="board" aria-label="Tablero Kanban de pedidos">
+                        {% for stage in stages %}
+                        <section class="board-column"><div class="column-head"><span class="column-title"><i class="column-dot"></i>{{ stage.title }}</span><span class="column-count">{{ stage.count }}</span></div>
+                            {% for order in stage.orders %}
+                            <article class="order-card">
+                                <div class="order-card-top"><span>#DA-{{ order.id }}</span><span class="priority">{{ order.get_status_display }}</span></div>
+                                <h3>{{ order.order_details|default:"Pedido personalizado"|truncatechars:56 }}</h3>
+                                <p>{{ order.customer_name }}{% with item=order.items.all|first %}{% if item %} · {{ item.quantity }} × {{ item.product_name }}{% endif %}{% endwith %}</p>
+                                <div class="order-meta"><span>{% if order.delivery_date %}{{ order.delivery_date|date:"d/m" }}{% else %}Fecha pendiente{% endif %}</span><span>{% if order.delivery_time %}{{ order.delivery_time|time:"H:i" }}{% endif %}</span></div>
+                            </article>
+                            {% empty %}
+                            <p class="kanban-empty">Sin pedidos en esta etapa.</p>
+                            {% endfor %}
+                        </section>
+                        {% endfor %}
+                    </div>
+                </div>
+            </section>
+
+            <aside class="side-stack">
+                <section class="ops-panel" id="inventario">
+                    <header class="panel-head"><div><h2>Inventario de insumos</h2><p>Existencias y alertas de reposición</p></div><a class="panel-link" href="{% url 'inventory-management' %}">Gestionar stock →</a></header>
+                    <div class="inventory-list">
+                        {% for material in materials|slice:":5" %}
+                        <div class="stock-row">
+                            <div><span class="stock-name">{{ material.name }}</span><span class="stock-detail">{% if material.needs_restock %}Requiere reposición{% else %}Stock disponible{% endif %} · {{ material.unit }} · mínimo {{ material.minimum_stock|floatformat:-2 }}</span></div>
+                            <span class="stock-level {% if material.needs_restock %}low{% else %}good{% endif %}">{{ material.stock|floatformat:-2 }} {{ material.unit }}</span>
+                            {% if material.needs_restock %}<button class="reorder-button" type="button" data-bs-toggle="modal" data-bs-target="#replenishment-modal" data-material="{{ material.name }}" data-stock="{{ material.stock|floatformat:-2 }}" data-unit="{{ material.unit }}">Reponer</button>{% else %}<span></span>{% endif %}
+                        </div>
+                        {% empty %}
+                        <div class="empty-state"><strong>Inventario aún no configurado</strong><p>Agrega los ingredientes y cantidades reales para que el panel muestre existencias y alertas.</p><a class="btn btn-success btn-sm" href="{% url 'inventory-management' %}">Agregar primer insumo</a></div>
+                        {% endfor %}
+                    </div>
+                    {% if materials %}
+                    <div class="inventory-footer"><span>Mostrando {{ materials|slice:":5"|length }} de {{ materials|length }} insumos</span><a href="{% url 'inventory-management' %}">Ver inventario completo →</a></div>
+                    {% endif %}
+                </section>
+
+                <section class="ops-panel" id="despachos">
+                    <header class="panel-head"><div><h2>Próximos despachos</h2><p>Ruta y confirmación de entrega</p></div><button class="panel-link" type="button">Ver rutas →</button></header>
+                    <div class="dispatch-list">
+                        {% for order in ready_orders %}
+                        <div class="dispatch-row"><span class="dispatch-icon">↗</span><div><span class="dispatch-name">#DA-{{ order.id }} · {{ order.customer_name }}</span><span class="dispatch-note">{% if order.delivery_date %}{{ order.delivery_date|date:"d/m/Y" }}{% else %}Fecha pendiente{% endif %}{% if order.delivery_time %} · {{ order.delivery_time|time:"H:i" }}{% endif %}</span></div><button class="proof-button" type="button" data-bs-toggle="modal" data-bs-target="#delivery-proof-modal" data-order="#DA-{{ order.id }}">Confirmar entrega</button></div>
+                        {% empty %}
+                        <div class="empty-state"><strong>No hay pedidos listos para despacho</strong><p>Los pedidos aparecerán aquí al llegar a la etapa «Listo».</p></div>
+                        {% endfor %}
+                    </div>
+                </section>
+            </aside>
+        </main>
+
+        <p class="dashboard-note"><span aria-hidden="true">ⓘ</span><span><strong>Datos en vivo:</strong> este panel muestra los materiales y pedidos registrados en la base de datos. Las solicitudes de reposición y comprobantes de entrega aún requieren conectar sus flujos de guardado.</span></p>
+    </div>
+</div>
+
+<div class="modal fade" id="replenishment-modal" tabindex="-1" aria-labelledby="replenishment-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header"><div><span class="ops-eyebrow">Abastecimiento</span><h2 class="modal-title fs-4" id="replenishment-title">Solicitar reposición</h2></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+            <form id="replenishment-form">
+                <div class="modal-body">
+                    <div class="mb-3"><label class="d-block" for="replenishment-material">Insumo</label><input class="form-control" id="replenishment-material" readonly></div>
+                    <div class="row g-3">
+                        <div class="col-6"><label class="d-block" for="replenishment-current">Stock actual</label><div class="input-group"><input class="form-control" id="replenishment-current" readonly><span class="input-group-text" id="replenishment-unit"></span></div></div>
+                        <div class="col-6"><label class="d-block" for="replenishment-quantity">Cantidad a solicitar</label><input class="form-control" id="replenishment-quantity" type="number" min="1" step="1" value="10" required></div>
+                        <div class="col-12"><label class="d-block" for="replenishment-priority">Prioridad</label><select class="form-select" id="replenishment-priority"><option>Normal</option><option>Urgente</option><option>Programada</option></select></div>
+                        <div class="col-12"><label class="d-block" for="replenishment-note">Nota para compras / proveedor</label><textarea class="form-control" id="replenishment-note" rows="2" placeholder="Proveedor sugerido, formato de compra o fecha requerida"></textarea></div>
+                    </div>
+                    <p class="small text-success mt-3 mb-0" id="replenishment-message" role="status" aria-live="polite"></p>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-success">Preparar solicitud</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="new-order-modal" tabindex="-1" aria-labelledby="new-order-title" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header"><div><span class="ops-eyebrow">Registro interno</span><h2 class="modal-title fs-4" id="new-order-title">Nuevo pedido personalizado</h2></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+            <form id="preview-order-form">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6"><label for="customer-name">Cliente</label><input class="form-control" id="customer-name" required placeholder="Nombre y apellido"></div>
+                        <div class="col-md-6"><label for="customer-contact">Teléfono</label><input class="form-control" id="customer-contact" type="tel" required placeholder="+56 9 1234 5678"></div>
+                        <div class="col-md-6"><label for="delivery-date">Fecha de entrega</label><input class="form-control" id="delivery-date" type="date" required></div>
+                        <div class="col-md-6"><label for="delivery-time">Hora de entrega</label><input class="form-control" id="delivery-time" type="time" required></div>
+                        <div class="col-12"><label for="order-design">Producto y diseño</label><textarea class="form-control" id="order-design" rows="2" required placeholder="Torta de cumpleaños, temática, tamaño y decoración"></textarea></div>
+                        <div class="col-12"><label>Lista de materiales (BOM) · solo ingredientes registrados</label>
+                            <div class="bom-choices">
+                                {% for material in materials %}
+                                <label class="bom-option"><input type="checkbox" value="{{ material.name }}"><span>{{ material.name }} · {{ material.stock|floatformat:-2 }} {{ material.unit }}</span><input aria-label="Cantidad de {{ material.name }}" type="number" min="0.01" max="{{ material.stock|floatformat:-2 }}" step="0.01" value="0.5"></label>
+                                {% empty %}
+                                <p class="empty-state">Primero registra ingredientes en el inventario para poder agregarlos a la BOM.</p>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div class="col-12"><div class="alert alert-light border mb-0 py-2 small">La cotización y el descuento real de ingredientes dependerán de disponibilidad y aprobación del equipo.</div></div>
+                    </div>
+                    <p class="small text-success mt-3 mb-0" id="order-preview-message" role="status" aria-live="polite"></p>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-success">Vista previa</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="delivery-proof-modal" tabindex="-1" aria-labelledby="delivery-proof-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header"><div><span class="ops-eyebrow">Logística</span><h2 class="modal-title fs-4" id="delivery-proof-title">Confirmar entrega</h2></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+            <form id="delivery-proof-form">
+                <div class="modal-body">
+                    <p class="small text-secondary mb-3">Pedido <strong id="proof-order">#DA-097</strong> · elige cómo registrar la recepción del cliente.</p>
+                    <label class="d-block" for="proof-method">Tipo de comprobante</label>
+                    <select class="form-select mb-3" id="proof-method"><option value="signature">Firma digital del cliente</option><option value="file">Fotografía o comprobante</option></select>
+                    <div id="signature-panel"><canvas class="signature-canvas" id="signature-canvas" aria-label="Área para dibujar firma"></canvas><div class="d-flex justify-content-between mt-2"><span class="signature-help">Firma dentro del recuadro</span><button type="button" class="panel-link" id="clear-signature">Borrar firma</button></div></div>
+                    <div id="file-panel" hidden><label class="d-block" for="delivery-file">Adjuntar foto o comprobante</label><input class="form-control" id="delivery-file" type="file" accept="image/*,.pdf"><span class="signature-help">Formatos admitidos: imagen o PDF.</span></div>
+                    <p class="small text-success mt-3 mb-0" id="proof-message" role="status" aria-live="polite"></p>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-success">Vista previa de confirmación</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+<script>
+    const replenishmentModal = document.querySelector('#replenishment-modal');
+    replenishmentModal.addEventListener('show.bs.modal', event => {
+        const trigger = event.relatedTarget;
+        if (!trigger) return;
+        document.querySelector('#replenishment-material').value = trigger.dataset.material;
+        document.querySelector('#replenishment-current').value = trigger.dataset.stock;
+        document.querySelector('#replenishment-unit').textContent = trigger.dataset.unit;
+        document.querySelector('#replenishment-quantity').value = Math.max(10, Number(trigger.dataset.stock) * 3);
+        document.querySelector('#replenishment-message').textContent = '';
+    });
+
+    document.querySelector('#replenishment-form').addEventListener('submit', event => {
+        event.preventDefault();
+        const material = document.querySelector('#replenishment-material').value;
+        const quantity = document.querySelector('#replenishment-quantity').value;
+        const unit = document.querySelector('#replenishment-unit').textContent;
+        const priority = document.querySelector('#replenishment-priority').value.toLowerCase();
+        document.querySelector('#replenishment-message').textContent =
+            `Solicitud de ${quantity} ${unit} de ${material} preparada (${priority}). Se guardará cuando conectemos el flujo de abastecimiento al backend.`;
+    });
+
+    document.querySelector('#preview-order-form').addEventListener('submit', event => {
+        event.preventDefault();
+        const name = document.querySelector('#customer-name').value.trim();
+        const ingredients = [...document.querySelectorAll('.bom-option input:checked')].map(input => input.value);
+        const bom = ingredients.length ? ` BOM: ${ingredients.join(', ')}.` : ' Aún no se han elegido ingredientes para la BOM.';
+        document.querySelector('#order-preview-message').textContent = `Vista previa lista para ${name}.${bom} El registro real se habilitará al conectar el backend.`;
+    });
+
+    const proofModal = document.querySelector('#delivery-proof-modal');
+    const proofCanvas = document.querySelector('#signature-canvas');
+    const proofContext = proofCanvas.getContext('2d');
+    let signatureStarted = false;
+    let drawingSignature = false;
+
+    function resizeSignatureCanvas() {
+        const bounds = proofCanvas.getBoundingClientRect();
+        const scale = window.devicePixelRatio || 1;
+        const savedSignature = signatureStarted ? proofCanvas.toDataURL() : null;
+        proofCanvas.width = bounds.width * scale;
+        proofCanvas.height = bounds.height * scale;
+        proofContext.scale(scale, scale);
+        proofContext.strokeStyle = '#704336';
+        proofContext.lineWidth = 2;
+        proofContext.lineCap = 'round';
+        proofContext.lineJoin = 'round';
+        if (savedSignature) {
+            const image = new Image();
+            image.onload = () => proofContext.drawImage(image, 0, 0, bounds.width, bounds.height);
+            image.src = savedSignature;
+        }
+    }
+
+    function signaturePoint(event) {
+        const bounds = proofCanvas.getBoundingClientRect();
+        return {x: event.clientX - bounds.left, y: event.clientY - bounds.top};
+    }
+
+    proofCanvas.addEventListener('pointerdown', event => {
+        drawingSignature = true;
+        signatureStarted = true;
+        proofCanvas.setPointerCapture(event.pointerId);
+        const point = signaturePoint(event);
+        proofContext.beginPath();
+        proofContext.moveTo(point.x, point.y);
+    });
+    proofCanvas.addEventListener('pointermove', event => {
+        if (!drawingSignature) return;
+        const point = signaturePoint(event);
+        proofContext.lineTo(point.x, point.y);
+        proofContext.stroke();
+    });
+    proofCanvas.addEventListener('pointerup', () => { drawingSignature = false; });
+    proofCanvas.addEventListener('pointercancel', () => { drawingSignature = false; });
+    proofModal.addEventListener('shown.bs.modal', resizeSignatureCanvas);
+    proofModal.addEventListener('show.bs.modal', event => {
+        const orderId = event.relatedTarget?.getAttribute('data-order');
+        if (orderId) document.querySelector('#proof-order').textContent = orderId;
+    });
+    window.addEventListener('resize', resizeSignatureCanvas);
+    document.querySelector('#clear-signature').addEventListener('click', () => {
+        proofContext.clearRect(0, 0, proofCanvas.width, proofCanvas.height);
+        signatureStarted = false;
+    });
+
+    document.querySelector('#proof-method').addEventListener('change', event => {
+        const isFile = event.target.value === 'file';
+        document.querySelector('#file-panel').hidden = !isFile;
+        document.querySelector('#signature-panel').hidden = isFile;
+    });
+    document.querySelector('#delivery-proof-form').addEventListener('submit', event => {
+        event.preventDefault();
+        const isFile = document.querySelector('#proof-method').value === 'file';
+        const hasFile = document.querySelector('#delivery-file').files.length > 0;
+        if (isFile ? !hasFile : !signatureStarted) {
+            document.querySelector('#proof-message').textContent = isFile
+                ? 'Adjunta una fotografía o comprobante antes de continuar.'
+                : 'Registra la firma del cliente antes de continuar.';
+            return;
+        }
+        document.querySelector('#proof-message').textContent = 'Comprobante listo en la vista previa. El guardado se habilitará al conectar el backend.';
+    });
+</script>
+{% endblock %}
