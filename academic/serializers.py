@@ -211,3 +211,52 @@ class PurchaseRequestStatusSerializer(serializers.Serializer):
     """Restringe el cambio de estado a los valores definidos en el modelo."""
 
     status = serializers.ChoiceField(choices=PurchaseRequest.Status.choices)
+
+
+class MaterialSerializer(serializers.ModelSerializer):
+    """Materiales o ingredientes de la pastelería para control del stock."""
+
+    class Meta:
+        model = __import__('academic.models', fromlist=['Material']).Material
+        fields = ['id', 'name', 'stock', 'unit', 'is_active']
+
+
+class BOMItemSerializer(serializers.ModelSerializer):
+    """Lista de materiales necesarios para un pedido."""
+
+    material_name = serializers.CharField(source='material.name', read_only=True)
+
+    class Meta:
+        model = __import__('academic.models', fromlist=['BOMItem']).BOMItem
+        fields = ['id', 'material', 'material_name', 'quantity', 'notes']
+
+
+class BakeryOrderItemSerializer(serializers.ModelSerializer):
+    """Línea de un pedido con la descripción del producto final."""
+
+    class Meta:
+        model = __import__('academic.models', fromlist=['BakeryOrderItem']).BakeryOrderItem
+        fields = ['id', 'product_name', 'quantity', 'unit_price', 'notes', 'subtotal']
+
+
+class BakeryOrderSerializer(serializers.ModelSerializer):
+    """Representa los pedidos personalizados del taller de pastelería."""
+
+    items = BakeryOrderItemSerializer(many=True, read_only=True)
+    bom_items = BOMItemSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = __import__('academic.models', fromlist=['BakeryOrder']).BakeryOrder
+        fields = [
+            'id', 'customer_name', 'contact_phone', 'order_details', 'delivery_date',
+            'delivery_time', 'status', 'total', 'created_at', 'updated_at', 'items', 'bom_items',
+        ]
+        read_only_fields = fields
+
+
+class BakeryOrderStatusSerializer(serializers.Serializer):
+    """Valida cambios de estado dentro del flujo de producción del taller."""
+
+    status = serializers.ChoiceField(
+        choices=__import__('academic.models', fromlist=['BakeryOrder']).BakeryOrder.Status.choices
+    )

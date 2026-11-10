@@ -122,3 +122,73 @@ class PurchaseRequestItem(models.Model):
     @property
     def subtotal(self):
         return self.unit_price * self.quantity
+
+
+class Material(models.Model):
+    """Material o ingrediente base del taller de pastelería para control de inventario y BOM."""
+
+    name = models.CharField(max_length=160, unique=True)
+    stock = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    unit = models.CharField(max_length=30, default='kg')
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name
+
+
+class BakeryOrder(models.Model):
+    """Pedido personalizado para producción artesanal y seguimiento interno del proceso."""
+
+    class Status(models.TextChoices):
+        RECEIVED = 'recibido', 'Recibido'
+        IN_PREPARATION = 'en_preparacion', 'En preparación'
+        BAKED = 'horneado', 'Horneado'
+        DECORATED = 'decorado', 'Decorado'
+        QUALITY_CONTROL = 'control_calidad', 'Control de calidad'
+        READY = 'listo', 'Listo'
+
+    customer_name = models.CharField(max_length=180)
+    contact_phone = models.CharField(max_length=40, blank=True)
+    order_details = models.TextField(blank=True)
+    delivery_date = models.DateField(null=True, blank=True)
+    delivery_time = models.TimeField(null=True, blank=True)
+    total = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    status = models.CharField(max_length=30, choices=Status.choices, default=Status.RECEIVED)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='bakery_orders')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Pedido #{self.pk} - {self.customer_name}'
+
+
+class BakeryOrderItem(models.Model):
+    """Línea del pedido con descripción del producto final y cantidades requeridas."""
+
+    order = models.ForeignKey(BakeryOrder, on_delete=models.CASCADE, related_name='items')
+    product_name = models.CharField(max_length=180)
+    quantity = models.PositiveIntegerField(default=1)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    notes = models.TextField(blank=True)
+
+    @property
+    def subtotal(self):
+        return self.unit_price * self.quantity
+
+    def __str__(self):
+        return f'{self.product_name} x{self.quantity}'
+
+
+class BOMItem(models.Model):
+    """Material requerido para cada pedido, usado para descontar inventario de producción."""
+
+    order = models.ForeignKey(BakeryOrder, on_delete=models.CASCADE, related_name='bom_items')
+    material = models.ForeignKey(Material, on_delete=models.PROTECT, related_name='bom_items')
+    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=1)
+    notes = models.TextField(blank=True)
+
+    def __str__(self):
+        return f'{self.material.name} - {self.quantity}'

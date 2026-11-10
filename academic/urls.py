@@ -16,4 +16,8 @@ urlpatterns = [
     path('mis-solicitudes/', views.MyPurchaseRequestsView.as_view(), name='my-requests'),
     path('solicitudes/', views.WarehousePurchaseRequestsView.as_view(), name='warehouse-requests'),
     path('solicitudes/<int:pk>/estado/', views.PurchaseRequestStatusView.as_view(), name='request-status'),
+    path('materiales/', views.MaterialInventoryView.as_view(), name='material-list'),
+    path('pedidos/', views.BakeryOrderListCreateView.as_view(), name='bakery-order-list'),
+    path('pedidos/<int:pk>/', views.BakeryOrderDetailView.as_view(), name='bakery-order-detail'),
+    path('pedidos/<int:pk>/estado/', views.BakeryOrderStatusView.as_view(), name='bakery-order-status'),
 ]

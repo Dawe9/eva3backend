@@ -20,8 +20,12 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 
 from .filters import MedicalSupplyFilter
 from .models import (
+    BakeryOrder,
+    BakeryOrderItem,
+    BOMItem,
     Cart,
     CartItem,
+    Material,
     MedicalSupply,
     Profile,
     PurchaseRequest,
@@ -30,9 +34,13 @@ from .models import (
 )
 from .permissions import IsMedicalInstitution, IsSuperUser, IsWarehouseManager
 from .serializers import (
+    BakeryOrderSerializer,
+    BakeryOrderStatusSerializer,
+    BOMItemSerializer,
     CartItemInputSerializer,
     CartSerializer,
     InstitutionRegistrationSerializer,
+    MaterialSerializer,
     MedicalSupplySerializer,
     PurchaseRequestSerializer,
     PurchaseRequestStatusSerializer,
@@ -445,6 +453,86 @@ class PurchaseRequestStatusView(APIView):
 
         order = PurchaseRequest.objects.select_related('institution').prefetch_related('items').get(pk=order.pk)
         return Response(PurchaseRequestSerializer(order).data)
+
+
+class MaterialInventoryView(generics.ListCreateAPIView):
+    """Inventario base del taller: materiales y commodities para producción artesanal."""
+
+    queryset = Material.objects.filter(is_active=True).order_by('name')
+    serializer_class = MaterialSerializer
+    permission_classes = [IsAuthenticated, IsSuperUser]
+
+
+class BakeryOrderListCreateView(generics.ListCreateAPIView):
+    """Listado y creación de pedidos personalizados para la pastelería."""
+
+    serializer_class = BakeryOrderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if self.request.user.is_staff or self.request.user.profile.role == Profile.Role.WAREHOUSE_MANAGER:
+            return BakeryOrder.objects.select_related('created_by').prefetch_related('items', 'bom_items__material').order_by('-created_at')
+        return BakeryOrder.objects.filter(created_by=self.request.user).select_related('created_by').prefetch_related('items', 'bom_items__material').order_by('-created_at')
+
+    def perform_create(self, serializer):
+        order = serializer.save(created_by=self.request.user)
+        total = 0
+        for item in order.items.all():
+            total += item.unit_price * item.quantity
+        order.total = total
+        order.save(update_fields=['total'])
+
+
+class BakeryOrderDetailView(generics.RetrieveUpdateAPIView):
+    """Detalle de un pedido con trazabilidad de producción y materiales."""
+
+    serializer_class = BakeryOrderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if self.request.user.is_staff or self.request.user.profile.role == Profile.Role.WAREHOUSE_MANAGER:
+            return BakeryOrder.objects.select_related('created_by').prefetch_related('items', 'bom_items__material')
+        return BakeryOrder.objects.filter(created_by=self.request.user).select_related('created_by').prefetch_related('items', 'bom_items__material')
+
+
+class BakeryOrderStatusView(APIView):
+    """Mueve un pedido por las etapas del proceso productivo y descuenta inventario en la etapa final."""
+
+    permission_classes = [IsAuthenticated, IsSuperUser]
+
+    allowed_transitions = {
+        BakeryOrder.Status.RECEIVED: {BakeryOrder.Status.IN_PREPARATION, BakeryOrder.Status.READY},
+        BakeryOrder.Status.IN_PREPARATION: {BakeryOrder.Status.BAKED, BakeryOrder.Status.QUALITY_CONTROL},
+        BakeryOrder.Status.BAKED: {BakeryOrder.Status.DECORATED, BakeryOrder.Status.QUALITY_CONTROL},
+        BakeryOrder.Status.DECORATED: {BakeryOrder.Status.QUALITY_CONTROL},
+        BakeryOrder.Status.QUALITY_CONTROL: {BakeryOrder.Status.READY},
+        BakeryOrder.Status.READY: set(),
+    }
+
+    @extend_schema(request=BakeryOrderStatusSerializer, responses=BakeryOrderSerializer)
+    def patch(self, request, pk):
+        serializer = BakeryOrderStatusSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_status = serializer.validated_data['status']
+
+        with transaction.atomic():
+            order = generics.get_object_or_404(
+                BakeryOrder.objects.select_for_update().prefetch_related('bom_items__material'),
+                pk=pk,
+            )
+            if target_status not in self.allowed_transitions.get(order.status, set()):
+                raise ValidationError({'status': f'Transición no permitida: {order.status} -> {target_status}.'})
+            if target_status == BakeryOrder.Status.READY:
+                for bom in order.bom_items.select_related('material').all():
+                    material = bom.material
+                    if material.stock < bom.quantity:
+                        raise ValidationError({'stock': f'No hay stock suficiente de {material.name}.'})
+                    material.stock = material.stock - bom.quantity
+                    material.save(update_fields=['stock'])
+            order.status = target_status
+            order.save(update_fields=['status', 'updated_at'])
+
+        return Response(BakeryOrderSerializer(BakeryOrder.objects.prefetch_related('items', 'bom_items__material').get(pk=order.pk)).data)
 
 
 def error_404(request, exception):
