@@ -1,0 +1,33 @@
+{% extends 'academic/base.html' %}
+{% block title %}Agregar administrador | Dulce Arte{% endblock %}
+{% block content %}
+<section class="container py-5" style="max-width: 760px;">
+    <div class="mb-4">
+        <h1>Agregar administrador</h1>
+        <p class="text-secondary mb-0">Crea una cuenta para gestionar la operación. Esta cuenta no tendrá acceso a Django Admin.</p>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-success" role="status">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <form method="post" class="card card-body gap-3">
+        {% csrf_token %}
+        {% for field in form %}
+            <div>
+                <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<div class="form-text">{{ field.help_text|safe }}</div>{% endif %}
+                {% for error in field.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+        {% endfor %}
+        {% for error in form.non_field_errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-success">Crear administrador</button>
+            <a href="{% url 'home' %}" class="btn btn-outline-secondary">Volver</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

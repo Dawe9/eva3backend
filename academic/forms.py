@@ -1,11 +1,26 @@
 """Formularios internos para la gestión del taller de pastelería."""
 
 from django import forms
+from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import UserCreationForm
 from django.db.models import Q
 from django.forms import inlineformset_factory
 from django.utils import timezone
 
 from .models import BakeryOrder, BakeryOrderItem, BakeryProductOption, BOMItem, Material
+
+
+class StaffUserCreationForm(UserCreationForm):
+    """Valida las credenciales de un nuevo gestor sin permitir privilegios de superusuario."""
+
+    class Meta(UserCreationForm.Meta):
+        model = get_user_model()
+        fields = ('username', 'first_name', 'last_name', 'email')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs['class'] = 'form-control'
 
 
 class BakeryOrderForm(forms.ModelForm):

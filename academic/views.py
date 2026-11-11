@@ -22,7 +22,13 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter, SearchFilter
 
 from .filters import MedicalSupplyFilter
-from .forms import BakeryOrderForm, BakeryOrderItemFormSet, BOMItemFormSet, MaterialForm
+from .forms import (
+    BakeryOrderForm,
+    BakeryOrderItemFormSet,
+    BOMItemFormSet,
+    MaterialForm,
+    StaffUserCreationForm,
+)
 from .models import (
     BakeryOrder,
     BakeryOrderItem,
@@ -137,6 +143,24 @@ def favicon(request):
 def register_page(request):
     """Deshabilita el antiguo registro público de clientes de farmacia."""
     return redirect('home')
+
+
+@login_required(login_url='/admin/login/')
+@user_passes_test(lambda user: user.is_active and user.is_superuser, login_url='/admin/login/')
+def staff_user_creation_page(request):
+    """Permite solo al superusuario crear gestores que no pueden acceder a Django Admin."""
+    form = StaffUserCreationForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        with transaction.atomic():
+            user = form.save(commit=False)
+            user.is_staff = True
+            user.is_superuser = False
+            user.save()
+            Profile.objects.create(user=user, role=Profile.Role.WAREHOUSE_MANAGER)
+        messages.success(request, f'La cuenta de {user.username} se creó correctamente.')
+        return redirect('staff-user-creation')
+
+    return render(request, 'academic/staff_user_creation.html', {'form': form})
 
 
 def warehouse_dashboard_page(request):

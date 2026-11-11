@@ -151,6 +151,9 @@
                 </div>
                 <div class="nav-utility">
                     <a class="btn btn-outline-success" href="/gestor/" id="warehouse-link">Panel del taller</a>
+                    {% if request.user.is_authenticated and request.user.is_superuser %}
+                    <a class="btn btn-outline-success" href="{% url 'staff-user-creation' %}">Agregar administrador</a>
+                    {% endif %}
                     <a class="btn btn-outline-success" href="/login/" id="login-link">Acceso equipo</a>
                     <a class="btn btn-success d-none" href="/register/" id="register-link" aria-hidden="true">Crear cuenta</a>
                     <span class="small text-success d-none" id="session-status">Sesión activa</span>

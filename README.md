@@ -38,6 +38,9 @@ py manage.py runserver
 
 Abrir <http://127.0.0.1:8000/>. Para crear el primer usuario administrativo
 local, ejecuta `py manage.py createsuperuser`.
+Desde la sesión del superusuario también puedes crear cuentas de administración
+operativa en `/usuarios/nuevo/`. Estas cuentas pueden gestionar el taller, pero
+no tienen acceso a Django Admin.
 
 Los comandos `seed_bakery_materials` y `seed_bakery_products` son idempotentes.
 El catálogo contiene 22 ingredientes con stock inicial cero y diez tortas

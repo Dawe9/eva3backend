@@ -602,6 +602,43 @@ class PharmacyApiTests(TestCase):
 
         self.assertEqual(add_page.status_code, 302)
 
+    def test_only_superuser_can_open_staff_user_creation_template(self):
+        self.client.force_login(self.manager)
+        response = self.client.get('/usuarios/nuevo/')
+        self.assertEqual(response.status_code, 302)
+
+        self.client.force_login(self.admin)
+        self.assertEqual(self.client.get('/admin/').status_code, 200)
+        response = self.client.get('/usuarios/nuevo/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Agregar administrador')
+
+    def test_superuser_can_create_staff_user_without_django_admin_access(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            '/usuarios/nuevo/',
+            {
+                'username': 'nuevo_gestor',
+                'first_name': 'Nuevo',
+                'last_name': 'Gestor',
+                'email': 'gestor@example.test',
+                'password1': 'UnaClaveSegura-2026',
+                'password2': 'UnaClaveSegura-2026',
+                'is_superuser': 'on',
+            },
+        )
+
+        self.assertRedirects(response, '/usuarios/nuevo/')
+        user = get_user_model().objects.get(username='nuevo_gestor')
+        self.assertTrue(user.is_staff)
+        self.assertFalse(user.is_superuser)
+        self.assertTrue(user.check_password('UnaClaveSegura-2026'))
+        self.assertEqual(user.profile.role, Profile.Role.WAREHOUSE_MANAGER)
+
+        self.client.force_login(user)
+        self.assertEqual(self.client.get('/admin/').status_code, 302)
+
     def test_staff_can_advance_order_stage_without_django_admin(self):
         order = BakeryOrder.objects.create(
             customer_name='Cliente etapa staff',
